@@ -1,20 +1,17 @@
 import math
-from typing import Union, List
 
-from einops import repeat
-from jaxtyping import Bool, Float, Int
 import torch
+from einops import repeat
 from torch import nn
-import torch.nn.functional as F
 from x_transformers.x_transformers import RotaryEmbedding
 
 from rift_svc.modules import (
     AdaLayerNormZero_Final,
     DiTBlock,
     TimestepEmbedding,
-    LoRALinear,
 )
- 
+
+
 # Conditional embedding for f0, rms, cvec
 class CondEmbedding(nn.Module):
     def __init__(self, cvec_dim: int, cond_dim: int):
@@ -33,9 +30,9 @@ class CondEmbedding(nn.Module):
 
     def forward(
             self,
-            f0: Float[torch.Tensor, "b n"],
-            rms: Float[torch.Tensor, "b n"],
-            cvec: Float[torch.Tensor, "b n d"],
+            f0: torch.Tensor,
+            rms: torch.Tensor,
+            cvec: torch.Tensor,
         ):
         if f0.ndim == 2:
             f0 = f0.unsqueeze(-1)
@@ -59,7 +56,7 @@ class InputEmbedding(nn.Module):
         self.proj = nn.Linear(2 * out_dim, out_dim)
         self.ln = nn.LayerNorm(out_dim, elementwise_affine=False, eps=1e-6)
 
-    def forward(self, x: Float[torch.Tensor, "b n d1"], cond_embed: Float[torch.Tensor, "b n d2"]):
+    def forward(self, x: torch.Tensor, cond_embed: torch.Tensor):
         x = self.mel_embed(x)
         x = torch.cat((x, cond_embed), dim = -1)
         x = self.proj(x)
@@ -140,15 +137,14 @@ class DiT(nn.Module):
 
     def forward(
         self,
-        x: Float[torch.Tensor, "b n d1`"],  # nosied input mel
-        spk: Int[torch.Tensor, "b"],  # speaker
-        f0: Float[torch.Tensor, "b n"],
-        rms: Float[torch.Tensor, "b n"],
-        cvec: Float[torch.Tensor, "b n d2"],
-        time: Float[torch.Tensor, "b"],  # time step
-        drop_speaker: Union[bool, Bool[torch.Tensor, "b"]] = False,
-        mask: Bool[torch.Tensor, "b n"] | None = None,
-        skip_layers: Union[int, List[int], None] = None,
+        x: torch.Tensor,
+        spk: torch.Tensor,
+        f0: torch.Tensor,
+        rms: torch.Tensor,
+        cvec: torch.Tensor,
+        time: torch.Tensor,
+        drop_speaker: bool | torch.Tensor = False,
+        mask: torch.Tensor | None = None,
     ):
         batch, seq_len = x.shape[0], x.shape[1]
         if time.ndim == 0:
@@ -169,59 +165,10 @@ class DiT(nn.Module):
 
         rope = self.rotary_embed.forward_from_seq_len(seq_len)
 
-        if skip_layers is not None:
-            if isinstance(skip_layers, int):
-                skip_layers = [skip_layers]
-
-        for i, block in enumerate(self.transformer_blocks):
-            if skip_layers is not None and i in skip_layers:
-                continue
+        for block in self.transformer_blocks:
             x = block(x, t, mask = mask, rope = rope)
 
         x = self.norm_out(x, t)
         output = self.output(x)
 
         return output
-    
-
-    def apply_lora(self, rank, alpha):
-        for n, p in self.named_parameters():
-            p.requires_grad = False
-        self.spk_embed.weight.requires_grad = True
-        # Apply LoRA to k_proj and v_proj in each attention block
-        for block in self.transformer_blocks:
-            block.attn.k_proj = LoRALinear(block.attn.k_proj, rank, alpha)
-            block.attn.v_proj = LoRALinear(block.attn.v_proj, rank, alpha)
-
-
-    def merge_lora(self):
-        # Iterate over each transformer block in the DiT backbone
-        for block in self.transformer_blocks:
-            # Merge for k_proj if it is a LoRALinear instance
-            if isinstance(block.attn.k_proj, LoRALinear):
-                with torch.no_grad():
-                    # Compute delta update: B @ A^T
-                    delta = block.attn.k_proj.B @ block.attn.k_proj.A.T
-                    # The underlying linear layer has weight of shape (out_features, in_features)
-                    # and its forward computes x * weight.T
-                    # Note: delta.T equals A @ B^T, so merging works correctly:
-                    block.attn.k_proj.linear.weight.add_(delta)
-                # Replace the LoRALinear module with the merged linear layer
-                block.attn.k_proj = block.attn.k_proj.linear
-
-            # Merge for v_proj in the same way
-            if isinstance(block.attn.v_proj, LoRALinear):
-                with torch.no_grad():
-                    delta = block.attn.v_proj.B @ block.attn.v_proj.A.T
-                    block.attn.v_proj.linear.weight.add_(delta)
-                block.attn.v_proj = block.attn.v_proj.linear
-
-
-    def freeze_adaln_and_tembed(self):
-        for p in self.tembed.parameters():
-            p.requires_grad = False
-        for p in self.norm_out.parameters():
-            p.requires_grad = False
-        for block in self.transformer_blocks:
-            for p in block.attn_norm.parameters():
-                p.requires_grad = False

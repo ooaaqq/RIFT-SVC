@@ -23,6 +23,26 @@ def load_audio(file_path: str | Path, target_sr: int) -> np.ndarray:
     return audio.numpy().squeeze(0)
 
 
+def write_audio(
+    file_path: str | Path,
+    audio: np.ndarray,
+    sample_rate: int,
+    subtype: str | None = "PCM_24",
+) -> None:
+    """Write inference output without silently quantizing it to PCM16."""
+    file_path = Path(file_path)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    audio = np.asarray(audio, dtype=np.float32)
+    if audio.ndim != 1:
+        raise ValueError(f"expected mono audio, got shape {audio.shape}")
+    sf.write(
+        file_path,
+        np.nan_to_num(audio),
+        sample_rate,
+        subtype=subtype or "PCM_24",
+    )
+
+
 def apply_fade(audio: np.ndarray, fade_samples: int, fade_in: bool) -> np.ndarray:
     if fade_samples <= 0:
         return audio

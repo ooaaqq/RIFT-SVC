@@ -1,15 +1,9 @@
-"""Small tensor helpers shared by model code without training dependencies."""
+"""Small tensor helpers shared by the inference model."""
 
 from __future__ import annotations
 
-from typing import Any
-
 import torch
 import torch.nn.functional as F
-
-
-def exists(value: Any) -> bool:
-    return value is not None
 
 
 def lens_to_mask(

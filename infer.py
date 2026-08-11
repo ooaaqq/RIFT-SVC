@@ -6,7 +6,7 @@ from pathlib import Path
 
 import click
 
-from rift_svc.inference.output import write_audio
+from rift_svc.inference.audio import write_audio
 from rift_svc.inference.runtime import InferenceRuntime
 
 
@@ -21,8 +21,6 @@ from rift_svc.inference.runtime import InferenceRuntime
 @click.option("--infer-steps", type=click.IntRange(min=1), default=32, show_default=True)
 @click.option("--ds-cfg-strength", type=float, default=0.2, show_default=True)
 @click.option("--spk-cfg-strength", type=float, default=0.8, show_default=True)
-@click.option("--skip-cfg-strength", type=float, default=0.0, show_default=True)
-@click.option("--cfg-skip-layers", type=int, default=None)
 @click.option("--cfg-rescale", type=float, default=0.7, show_default=True)
 @click.option("--cvec-downsample-rate", type=click.IntRange(min=1), default=2, show_default=True)
 @click.option("--target-loudness", type=float, default=-18.0, show_default=True)
@@ -35,7 +33,6 @@ from rift_svc.inference.runtime import InferenceRuntime
 @click.option("--slicer-hop-size", type=click.IntRange(min=1), default=10, show_default=True)
 @click.option("--slicer-max-sil-kept", type=click.IntRange(min=1), default=200, show_default=True)
 @click.option("--use-fp16/--no-use-fp16", default=True)
-@click.option("--batch-size", type=click.IntRange(min=1), default=1, show_default=True)
 @click.option("--seed", type=int, default=None)
 @click.option(
     "--output-subtype",
@@ -54,8 +51,6 @@ def main(
     infer_steps,
     ds_cfg_strength,
     spk_cfg_strength,
-    skip_cfg_strength,
-    cfg_skip_layers,
     cfg_rescale,
     cvec_downsample_rate,
     target_loudness,
@@ -68,7 +63,6 @@ def main(
     slicer_hop_size,
     slicer_max_sil_kept,
     use_fp16,
-    batch_size,
     seed,
     output_subtype,
 ):
@@ -87,8 +81,6 @@ def main(
         infer_steps=infer_steps,
         ds_cfg_strength=ds_cfg_strength,
         spk_cfg_strength=spk_cfg_strength,
-        skip_cfg_strength=skip_cfg_strength,
-        cfg_skip_layers=cfg_skip_layers,
         cfg_rescale=cfg_rescale,
         cvec_downsample_rate=cvec_downsample_rate,
         target_loudness=target_loudness,
@@ -100,7 +92,6 @@ def main(
         slicer_min_interval=slicer_min_interval,
         slicer_hop_size=slicer_hop_size,
         slicer_max_sil_kept=slicer_max_sil_kept,
-        batch_size=batch_size,
         seed=seed,
     )
     write_audio(output, audio, runtime.sample_rate, subtype=output_subtype)

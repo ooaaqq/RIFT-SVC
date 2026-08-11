@@ -1,38 +1,10 @@
 import math
 
-from einops import rearrange
-from jaxtyping import Float, Bool
-
 import torch
-from torch import nn
 import torch.nn.functional as F
-
+from einops import rearrange
+from torch import nn
 from x_transformers.x_transformers import apply_rotary_pos_emb
-
-
-class LoRALinear(nn.Module):
-    def __init__(self, linear, rank, alpha):
-        super().__init__()
-        self.linear = linear
-        self.rank = rank
-        self.alpha = alpha
-        self.scale = alpha / math.sqrt(rank)
-        in_features = linear.in_features
-        out_features = linear.out_features
-        self.A = nn.Parameter(torch.zeros(in_features, rank))
-        self.B = nn.Parameter(torch.zeros(out_features, rank))
-        # Initialize LoRA parameters
-        nn.init.normal_(self.A, mean=0, std=math.sqrt(self.rank) / self.linear.in_features)
-        nn.init.zeros_(self.B)
-        # Freeze original linear layer parameters
-        self.linear.weight.requires_grad = False
-        if self.linear.bias is not None:
-            self.linear.bias.requires_grad = False
-
-    def forward(self, x):
-        original_out = self.linear(x)
-        lora_out = (x @ self.A) @ self.B.T
-        return original_out + lora_out * self.scale
 
 
 # AdaLayerNormZero
@@ -135,10 +107,10 @@ class Attention(nn.Module):
 
     def forward(
         self,
-        x: Float[torch.Tensor, "b n d"],
-        mask: Bool[torch.Tensor, "b n"] | None = None,
+        x: torch.Tensor,
+        mask: torch.Tensor | None = None,
         rope = None, 
-    ) -> Float[torch.Tensor, "b n d"]:
+    ) -> torch.Tensor:
         batch_size = x.shape[0]
 
         # projections
@@ -207,11 +179,11 @@ class DiTBlock(nn.Module):
 
     def forward(
         self,
-        x: Float[torch.Tensor, "b n d"],
-        t: Float[torch.Tensor, "b d"],
-        mask: Bool[torch.Tensor, "b n"] | None = None,
-        rope: Float[torch.Tensor, "b d"] | None = None,
-    ) -> Float[torch.Tensor, "b n d"]:
+        x: torch.Tensor,
+        t: torch.Tensor,
+        mask: torch.Tensor | None = None,
+        rope: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         # pre-norm & modulation for attention input
         norm, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.attn_norm(x, emb=t)
 
@@ -234,7 +206,7 @@ class SinusPositionEmbedding(nn.Module):
         super().__init__()
         self.dim = dim
 
-    def forward(self, x: Float[torch.Tensor, "b"], scale: float = 1000) -> Float[torch.Tensor, "b d"]:
+    def forward(self, x: torch.Tensor, scale: float = 1000) -> torch.Tensor:
         device = x.device
         half_dim = self.dim // 2
         emb = math.log(10000) / (half_dim - 1)
@@ -253,7 +225,7 @@ class TimestepEmbedding(nn.Module):
         self.act = nn.SiLU()
         self.proj = nn.Linear(dim, dim)
 
-    def forward(self, timestep: Float[torch.Tensor, "b"]) -> Float[torch.Tensor, "b d"]:
+    def forward(self, timestep: torch.Tensor) -> torch.Tensor:
         time = self.time2emb(timestep)
         time = self.time_emb(time)
         time = self.act(time)

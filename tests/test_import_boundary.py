@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 
-def test_inference_import_does_not_load_training_stack() -> None:
+def test_inference_import_has_no_model_side_effects() -> None:
     result = subprocess.run(
         [
             sys.executable,
@@ -12,9 +12,9 @@ def test_inference_import_does_not_load_training_stack() -> None:
             (
                 "import sys; "
                 "import rift_svc; "
-                "from rift_svc.inference.output import write_audio; "
-                "assert 'pytorch_lightning' not in sys.modules; "
-                "assert 'wandb' not in sys.modules"
+                "from rift_svc.inference.audio import write_audio; "
+                "assert 'torch' not in sys.modules; "
+                "assert 'pytorch_lightning' not in sys.modules"
             ),
         ],
         check=True,

@@ -1,21 +1,20 @@
 import torch
-from torch import nn
-from jaxtyping import Float
 from librosa.filters import mel as librosa_mel_fn
+from torch import nn
 from transformers import HubertModel
 
 
 def dynamic_range_compression_torch(
-        x: Float[torch.Tensor, "n_mels mel_len"],
+        x: torch.Tensor,
         C: float = 1,
         clip_val: float = 1e-5
-) -> Float[torch.Tensor, "n_mels mel_len"]:
+) -> torch.Tensor:
     return torch.log(torch.clamp(x, min=clip_val) * C)
 
 
 def spectral_normalize_torch(
-        magnitudes: Float[torch.Tensor, "n_mels mel_len"]
-) -> Float[torch.Tensor, "n_mels mel_len"]:
+        magnitudes: torch.Tensor
+    ) -> torch.Tensor:
     return dynamic_range_compression_torch(magnitudes)
 
 
@@ -24,7 +23,7 @@ hann_window_cache = {}
 
 
 def get_mel_spectrogram(
-    y: Float[torch.Tensor, "n"],
+    y: torch.Tensor,
     n_fft: int = 2048,
     num_mels: int = 128,
     sampling_rate: int = 44100,
@@ -33,7 +32,7 @@ def get_mel_spectrogram(
     fmin: int = 40,
     fmax: int | None = 16000,
     center: bool = False,
-) -> Float[torch.Tensor, "n_mels mel_len"]:
+) -> torch.Tensor:
     """
     Calculate the mel spectrogram of an input signal.
     This function uses slaney norm for the librosa mel filterbank (using librosa.filters.mel) and uses Hann window for STFT (using torch.stft).
@@ -103,7 +102,7 @@ class RMSExtractor(nn.Module):
         Args:
             hop_length (int): Number of samples between successive frames.
         """
-        super(RMSExtractor, self).__init__()
+        super().__init__()
         self.hop_length = hop_length
         self.window_length = window_length
 

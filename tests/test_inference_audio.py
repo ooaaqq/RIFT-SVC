@@ -3,8 +3,7 @@ from __future__ import annotations
 import numpy as np
 import soundfile as sf
 
-from rift_svc.inference.audio import add_segment, assemble_segments
-from rift_svc.inference.output import write_audio
+from rift_svc.inference.audio import add_segment, assemble_segments, write_audio
 
 
 def test_assemble_segments_is_float32_and_exact_length() -> None:
@@ -27,8 +26,12 @@ def test_write_audio_uses_explicit_lossless_subtypes(tmp_path) -> None:
     assert sf.info(flac_path).subtype == "PCM_24"
 
     wav_path = tmp_path / "audio.wav"
-    write_audio(wav_path, audio, 44100, subtype="FLOAT")
-    assert sf.info(wav_path).subtype == "FLOAT"
+    write_audio(wav_path, audio, 44100, subtype=None)
+    assert sf.info(wav_path).subtype == "PCM_24"
+
+    float_wav_path = tmp_path / "audio-float.wav"
+    write_audio(float_wav_path, audio, 44100, subtype="FLOAT")
+    assert sf.info(float_wav_path).subtype == "FLOAT"
 
 
 def test_streaming_segment_add_matches_batch_assembly() -> None:

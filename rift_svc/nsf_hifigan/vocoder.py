@@ -1,13 +1,11 @@
 import os
-import yaml
+
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-from .nvSTFT import STFT
-from .models import load_model,load_config
+import yaml
 from torchaudio.transforms import Resample
-from jaxtyping import Float
+
+from .models import load_config, load_model
+from .nvSTFT import STFT
 
 
 class DotDict(dict):
@@ -103,7 +101,7 @@ class NsfHifiGAN(torch.nn.Module):
         mel = self.stft.get_mel(audio, keyshift=keyshift).transpose(1, 2) # B, n_frames, bins
         return mel
     
-    def forward(self, mel: Float[torch.Tensor, "batch bins n_frames"], f0: Float[torch.Tensor, "batch n_frames"]):
+    def forward(self, mel: torch.Tensor, f0: torch.Tensor):
         if self.model is None:
             print('| Load HifiGAN: ', self.model_path)
             self.model, self.h = load_model(self.model_path, device=self.device)
