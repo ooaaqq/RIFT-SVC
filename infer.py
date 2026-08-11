@@ -33,11 +33,27 @@ def extract_state_dict(ckpt):
     return new_state_dict, spk2idx, model_cfg, dataset_cfg
 
 
-def load_models(model_path, device, use_fp16=True):
+def load_models(model_path, device, use_fp16=True, assets_dir=None):
     """Load all required models and return them"""
     click.echo("Loading models...")
-    
-    ckpt = torch.load(model_path, map_location='cpu')
+
+    device = torch.device(device)
+    assets_dir = Path(assets_dir) if assets_dir else Path(__file__).resolve().parent / "pretrained"
+    asset_paths = {
+        "vocoder": assets_dir / "nsf_hifigan_44.1k_hop512_128bin_2024.02" / "model.ckpt",
+        "rmvpe": assets_dir / "rmvpe" / "model.pt",
+        "content_vec": assets_dir / "content-vec-best",
+    }
+    missing_assets = [
+        str(path) for path in asset_paths.values() if not path.exists()
+    ]
+    if missing_assets:
+        raise FileNotFoundError(
+            "Missing inference assets. Run scripts/download_inference_assets.py or "
+            f"provide --assets-dir. Missing: {', '.join(missing_assets)}"
+        )
+
+    ckpt = torch.load(model_path, map_location='cpu', weights_only=False)
     state_dict, spk2idx, dit_cfg, dataset_cfg = extract_state_dict(ckpt)
 
     transformer = DiT(num_speaker=len(spk2idx), **dit_cfg)
@@ -45,17 +61,18 @@ def load_models(model_path, device, use_fp16=True):
     svc_model.load_state_dict(state_dict)
     svc_model = svc_model.to(device)
     
-    if use_fp16 and device != 'cpu':
+    use_fp16 = bool(use_fp16 and device.type == 'cuda')
+    if use_fp16:
         svc_model = svc_model.half()
     
     svc_model.eval()
     
-    vocoder = NsfHifiGAN('pretrained/nsf_hifigan_44.1k_hop512_128bin_2024.02/model.ckpt').to(device)
-    rmvpe = RMVPE(model_path="pretrained/rmvpe/model.pt", hop_length=160, device=device)
-    hubert = HubertModelWithFinalProj.from_pretrained("pretrained/content-vec-best").to(device)
+    vocoder = NsfHifiGAN(str(asset_paths["vocoder"])).to(device)
+    rmvpe = RMVPE(model_path=str(asset_paths["rmvpe"]), hop_length=160, device=device)
+    hubert = HubertModelWithFinalProj.from_pretrained(str(asset_paths["content_vec"])).to(device)
     rms_extractor = RMSExtractor().to(device)
     
-    if use_fp16 and device != 'cpu':
+    if use_fp16:
         vocoder = vocoder.half()
         hubert = hubert.half()
         rms_extractor = rms_extractor.half()
@@ -463,6 +480,12 @@ def pad_tensor_to_length(tensor, length):
 @click.option('--input', type=click.Path(exists=True), required=True, help='Input audio file')
 @click.option('--output', type=click.Path(), required=True, help='Output audio file')
 @click.option('--speaker', type=str, required=True, help='Target speaker')
+@click.option(
+    '--assets-dir',
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help='Directory containing the content vector, RMVPE, and HiFi-GAN assets',
+)
 @click.option('--key-shift', type=int, default=0, help='Pitch shift in semitones')
 @click.option('--device', type=str, default=None, help='Device to use (cuda/cpu)')
 @click.option('--infer-steps', type=int, default=32, help='Number of inference steps')
@@ -481,13 +504,14 @@ def pad_tensor_to_length(tensor, length):
 @click.option('--slicer-min-interval', type=int, default=100, help='Minimum interval between audio segments in milliseconds')
 @click.option('--slicer-hop-size', type=int, default=10, help='Hop size for audio slicing in milliseconds')
 @click.option('--slicer-max-sil-kept', type=int, default=200, help='Maximum silence kept in milliseconds')
-@click.option('--use-fp16', is_flag=True, default=True, help='Use float16 precision for faster inference')
+@click.option('--use-fp16/--no-use-fp16', default=True, help='Use float16 precision on CUDA')
 @click.option('--batch-size', type=int, default=1, help='Batch size for parallel inference')
 def main(
     model,
     input,
     output,
     speaker,
+    assets_dir,
     key_shift,
     device,
     infer_steps,
@@ -514,8 +538,11 @@ def main(
     if device is None:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
     device = torch.device(device)
+    use_fp16 = bool(use_fp16 and device.type == 'cuda')
 
-    svc_model, vocoder, rmvpe, hubert, rms_extractor, spk2idx, dataset_cfg = load_models(model, device, use_fp16)
+    svc_model, vocoder, rmvpe, hubert, rms_extractor, spk2idx, dataset_cfg = load_models(
+        model, device, use_fp16, assets_dir
+    )
 
     try:
         speaker_id = spk2idx[speaker]
