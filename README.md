@@ -23,7 +23,7 @@ cd RIFT-SVC
 #### 2. Install environment
 * uv is required: https://docs.astral.sh/uv/getting-started/installation/
 ```bash
-uv sync
+uv sync --extra training
 source .venv/bin/activate
 ``` 
 
@@ -31,7 +31,7 @@ source .venv/bin/activate
 
 #### 3. Download pretrained models for feature extraction and vocoder.
 ```bash
-python pretrained/download.py   
+python scripts/download_inference_assets.py --modules-only --output-dir .
 ```
 
 #### 4. Download pretrained weights for fine-tuning.
@@ -231,19 +231,16 @@ If you experience sudden audio gaps during playback or abnormal pitch jumps in t
 For 768-12 model, the VRAM consumption is ~3GB.
 
 
-##### GUI Inference
+##### CLI Inference
 
-To start the GUI application, run:
-
-```bash
-python gui_infer.py
-```
-
-For sharing the interface (creating a public URL), use:
+Inference is provided through a single CLI and writes PCM24 by default:
 
 ```bash
-python gui_infer.py --share
+python infer.py --help
 ```
+
+Use `--seed` for reproducible candidate generation and write intermediate
+float output with `--output-subtype FLOAT` and a `.wav` output path.
 
 ---
 

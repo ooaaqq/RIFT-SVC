@@ -1,13 +1,15 @@
-import os
 import json
-from .env import AttrDict
+import os
+
 import numpy as np
 import torch
 import torch.nn.functional as F
-import torch.nn as nn
-from torch.nn import Conv1d, ConvTranspose1d, AvgPool1d, Conv2d
-from torch.nn.utils import weight_norm, remove_weight_norm, spectral_norm
-from .utils import init_weights, get_padding
+from torch import nn
+from torch.nn import AvgPool1d, Conv1d, Conv2d, ConvTranspose1d
+from torch.nn.utils import remove_weight_norm, spectral_norm, weight_norm
+
+from .env import AttrDict
+from .model_utils import get_padding, init_weights
 
 LRELU_SLOPE = 0.1
 
@@ -36,7 +38,7 @@ def load_config(model_path):
 
 class ResBlock1(torch.nn.Module):
     def __init__(self, h, channels, kernel_size=3, dilation=(1, 3, 5)):
-        super(ResBlock1, self).__init__()
+        super().__init__()
         self.h = h
         self.convs1 = nn.ModuleList([
             weight_norm(Conv1d(channels, channels, kernel_size, 1, dilation=dilation[0],
@@ -76,7 +78,7 @@ class ResBlock1(torch.nn.Module):
 
 class ResBlock2(torch.nn.Module):
     def __init__(self, h, channels, kernel_size=3, dilation=(1, 3)):
-        super(ResBlock2, self).__init__()
+        super().__init__()
         self.h = h
         self.convs = nn.ModuleList([
             weight_norm(Conv1d(channels, channels, kernel_size, 1, dilation=dilation[0],
@@ -117,7 +119,7 @@ class SineGen(torch.nn.Module):
     def __init__(self, samp_rate, harmonic_num=0,
                  sine_amp=0.1, noise_std=0.003,
                  voiced_threshold=0):
-        super(SineGen, self).__init__()
+        super().__init__()
         self.sine_amp = sine_amp
         self.noise_std = noise_std
         self.harmonic_num = harmonic_num
@@ -185,7 +187,7 @@ class SourceModuleHnNSF(torch.nn.Module):
 
     def __init__(self, sampling_rate, harmonic_num=0, sine_amp=0.1,
                  add_noise_std=0.003, voiced_threshod=0):
-        super(SourceModuleHnNSF, self).__init__()
+        super().__init__()
 
         self.sine_amp = sine_amp
         self.noise_std = add_noise_std
@@ -206,7 +208,7 @@ class SourceModuleHnNSF(torch.nn.Module):
 
 class Generator(torch.nn.Module):
     def __init__(self, h):
-        super(Generator, self).__init__()
+        super().__init__()
         self.h = h
         self.num_kernels = len(h.resblock_kernel_sizes)
         self.num_upsamples = len(h.upsample_rates)
@@ -224,7 +226,7 @@ class Generator(torch.nn.Module):
             self.ups.append(weight_norm(
                 ConvTranspose1d(h.upsample_initial_channel // (2 ** i), h.upsample_initial_channel // (2 ** (i + 1)),
                                 k, u, padding=(k - u) // 2)))
-            if i + 1 < len(h.upsample_rates):  #
+            if i + 1 < len(h.upsample_rates):
                 stride_f0 = int(np.prod(h.upsample_rates[i + 1:]))
                 self.noise_convs.append(Conv1d(
                     1, c_cur, kernel_size=stride_f0 * 2, stride=stride_f0, padding=stride_f0 // 2))
@@ -275,7 +277,7 @@ class Generator(torch.nn.Module):
 
 class DiscriminatorP(torch.nn.Module):
     def __init__(self, period, kernel_size=5, stride=3, use_spectral_norm=False):
-        super(DiscriminatorP, self).__init__()
+        super().__init__()
         self.period = period
         norm_f = weight_norm if use_spectral_norm == False else spectral_norm
         self.convs = nn.ModuleList([
@@ -311,7 +313,7 @@ class DiscriminatorP(torch.nn.Module):
 
 class MultiPeriodDiscriminator(torch.nn.Module):
     def __init__(self, periods=None):
-        super(MultiPeriodDiscriminator, self).__init__()
+        super().__init__()
         self.periods = periods if periods is not None else [2, 3, 5, 7, 11]
         self.discriminators = nn.ModuleList()
         for period in self.periods:
@@ -335,7 +337,7 @@ class MultiPeriodDiscriminator(torch.nn.Module):
 
 class DiscriminatorS(torch.nn.Module):
     def __init__(self, use_spectral_norm=False):
-        super(DiscriminatorS, self).__init__()
+        super().__init__()
         norm_f = weight_norm if use_spectral_norm == False else spectral_norm
         self.convs = nn.ModuleList([
             norm_f(Conv1d(1, 128, 15, 1, padding=7)),
@@ -363,7 +365,7 @@ class DiscriminatorS(torch.nn.Module):
 
 class MultiScaleDiscriminator(torch.nn.Module):
     def __init__(self):
-        super(MultiScaleDiscriminator, self).__init__()
+        super().__init__()
         self.discriminators = nn.ModuleList([
             DiscriminatorS(use_spectral_norm=True),
             DiscriminatorS(),

@@ -1,10 +1,14 @@
-import sys, os
+import os
+import sys
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from rift_svc import RF, DiT
-import torch
-import thop
 import click
+import thop
+import torch
+
+from rift_svc.dit import DiT
+from rift_svc.rf import RF
 
 
 @click.command()

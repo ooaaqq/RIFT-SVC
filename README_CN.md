@@ -23,7 +23,7 @@ cd RIFT-SVC
 #### 2. 安装环境
 * 需要安装uv：https://docs.astral.sh/uv/getting-started/installation/
 ```bash
-uv sync
+uv sync --extra training
 source .venv/bin/activate
 ``` 
 
@@ -31,7 +31,7 @@ source .venv/bin/activate
 
 #### 3. 下载特征提取和声码器的预训练模型。
 ```bash
-python pretrained/download.py   
+python scripts/download_inference_assets.py --modules-only --output-dir .
 ```
 
 #### 4. 下载用于微调的预训练权重。
@@ -231,17 +231,13 @@ python infer.py \
 对于768-12模型，VRAM消耗约为~3GB。
 
 
-##### GUI推理
+##### CLI 推理
 
-要启动GUI网页推理，运行：
-
-```bash
-python gui_infer.py
-```
-
-要共享界面（创建公共URL），使用：
+推理统一通过 CLI 运行，默认输出 PCM24：
 
 ```bash
-python gui_infer.py --share
+python infer.py --help
 ```
 
+使用 `--seed` 固定候选结果；中间精修文件可使用 `.wav` 路径并指定
+`--output-subtype FLOAT`。

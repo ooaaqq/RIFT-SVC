@@ -1,15 +1,18 @@
 import json
-import sys, os
+import multiprocessing
+import os
+import sys
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from functools import partial
 from pathlib import Path
 
 import click
 import torch
 import torchaudio
-from functools import partial
-import multiprocessing
+from multiprocessing_utils import get_device, run_parallel
 
-from multiprocessing_utils import run_parallel, get_device
 from rift_svc.rmvpe.inference import RMVPE
 
 RMVPE_HOP_LENGTH = 160
@@ -69,7 +72,7 @@ def process_f0(audio, data_dir, model_path, hop_length, sample_rate, overwrite, 
             )
         n_frames = int(waveform.shape[-1] // hop_length) + 1
 
-        from rift_svc.utils import post_process_f0
+        from rift_svc.inference.pitch import post_process_f0
         f0_processed = post_process_f0(
             f0=f0,
             sample_rate=sample_rate,
@@ -81,8 +84,8 @@ def process_f0(audio, data_dir, model_path, hop_length, sample_rate, overwrite, 
         torch.save(f0_tensor, f0_path)
         if verbose:
             click.echo(f"Saved f0: {f0_path}")
-    except Exception as e:
-        click.echo(f"Error processing {wav_path}: {e}")
+    except (KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        click.echo(f"Error processing {wav_path}: {exc}")
 
 @click.command()
 @click.option(
@@ -139,8 +142,8 @@ def prepare_f0(data_dir, model_path, hop_length, sample_rate, num_workers, overw
     try:
         with open(meta_info_path, 'r', encoding='utf-8') as f:
             meta = json.load(f)
-    except Exception as e:
-        click.echo(f"Error reading meta_info.json: {e}")
+    except (OSError, json.JSONDecodeError) as exc:
+        click.echo(f"Error reading meta_info.json: {exc}")
         sys.exit(1)
 
     train_audios = meta.get('train_audios', [])

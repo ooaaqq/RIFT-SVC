@@ -37,13 +37,15 @@ script creates `inference-assets.json` and validates the checkpoint hash.
 
 Use batch size 1 on a T4 or P100. Adjust the guidance and robust-F0 values as
 an explicit candidate matrix instead of silently changing them between runs.
+The Runtime loads all neural networks once per notebook process, and `--seed`
+makes candidates reproducible.
 
 ```bash
 python infer.py \
   --model /kaggle/working/rift-assets/model/rift25k.ckpt \
   --assets-dir /kaggle/working/rift-assets/pretrained \
   --input /kaggle/input/INPUT_DATA/lead-vocal.wav \
-  --output /kaggle/working/outputs/lead-vocal__steps64-ds0.2-spk0.8-rf1.wav \
+  --output /kaggle/working/outputs/lead-vocal__steps64-ds0.2-spk0.8-rf1.flac \
   --speaker target \
   --device cuda \
   --infer-steps 64 \
@@ -51,9 +53,11 @@ python infer.py \
   --ds-cfg-strength 0.2 \
   --spk-cfg-strength 0.8 \
   --cfg-rescale 0.7 \
-  --robust-f0 1
+  --robust-f0 1 \
+  --seed 7
 ```
 
-Before downloading the result, verify that the output is non-empty, 44.1 kHz,
-and has the expected duration. Keep outputs under `/kaggle/working`; Kaggle
-runtime storage is temporary.
+The default FLAC output is explicit 24-bit PCM. For float intermediate work,
+use a `.wav` path together with `--output-subtype FLOAT`. Before downloading
+the result, verify that the output is non-empty, 44.1 kHz, and has the expected
+duration. Keep outputs under `/kaggle/working`; Kaggle runtime storage is temporary.

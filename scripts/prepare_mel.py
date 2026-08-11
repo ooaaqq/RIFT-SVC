@@ -1,15 +1,19 @@
-import os
 import json
+import os
 import sys
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from functools import partial
 from pathlib import Path
+
+import click
 import torch
 import torchaudio
-import click
-from functools import partial
+from multiprocessing_utils import get_device, run_parallel
 
 from rift_svc.feature_extractors import get_mel_spectrogram
-from multiprocessing_utils import run_parallel, get_device
+
 
 def process_audio(audio, data_dir, hop_length, n_mel_channels, sample_rate, verbose, overwrite, device):
     """
@@ -39,6 +43,11 @@ def process_audio(audio, data_dir, hop_length, n_mel_channels, sample_rate, verb
 
     try:
         waveform, sr = torchaudio.load(str(wav_path))
+        if sr != sample_rate:
+            raise ValueError(
+                f"sample-rate mismatch: WAV is {sr} Hz, expected {sample_rate} Hz; "
+                "run scripts/resample_normalize_audios.py first"
+            )
         # Ensure the correct shape
         if len(waveform.shape) == 1:
             waveform = waveform.unsqueeze(0)
@@ -64,8 +73,37 @@ def process_audio(audio, data_dir, hop_length, n_mel_channels, sample_rate, verb
         if verbose:
             click.echo(f"Saved Mel spectrogram: {mel_path}")
 
-    except Exception as e:
+    except ValueError as e:
+        if "sample-rate mismatch" in str(e):
+            raise
         click.echo(f"Error processing {wav_path}: {e}", err=True)
+    except (OSError, RuntimeError, TypeError) as e:
+        click.echo(f"Error processing {wav_path}: {e}", err=True)
+
+
+def validate_sample_rates(audios, data_dir, sample_rate):
+    """Fail before workers write features for a mixed-rate dataset."""
+    mismatches = []
+    for audio in audios:
+        speaker = audio.get("speaker")
+        file_name = audio.get("file_name")
+        if not speaker or not file_name:
+            continue
+        wav_path = Path(data_dir) / speaker / f"{file_name}.wav"
+        if not wav_path.is_file():
+            continue
+        try:
+            actual_rate = torchaudio.info(str(wav_path)).sample_rate
+        except (OSError, RuntimeError) as exc:
+            raise click.ClickException(f"cannot inspect {wav_path}: {exc}") from exc
+        if actual_rate != sample_rate:
+            mismatches.append(f"{wav_path}: {actual_rate} Hz")
+
+    if mismatches:
+        details = "\n".join(mismatches)
+        raise click.ClickException(
+            f"all WAV files must be {sample_rate} Hz before Mel extraction:\n{details}"
+        )
 
 @click.command()
 @click.option(
@@ -123,7 +161,7 @@ def generate_mel_specs(data_dir, hop_length, n_mel_channels, sample_rate, num_wo
     try:
         with open(meta_info, 'r', encoding='utf-8') as f:
             meta = json.load(f)
-    except Exception as e:
+    except (OSError, json.JSONDecodeError) as e:
         click.echo(f"Error reading meta_info.json: {e}", err=True)
         sys.exit(1)
 
@@ -137,6 +175,8 @@ def generate_mel_specs(data_dir, hop_length, n_mel_channels, sample_rate, num_wo
     if not all_audios:
         click.echo("No audio files found in meta_info.json.", err=True)
         sys.exit(1)
+
+    validate_sample_rates(all_audios, data_dir, sample_rate)
 
     device = get_device()
     if verbose:

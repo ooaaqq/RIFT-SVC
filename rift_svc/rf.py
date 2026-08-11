@@ -1,17 +1,15 @@
-from typing import Union, List, Literal
-from jaxtyping import Bool
-import torch
-from torch import nn
-import torch.nn.functional as F
+from __future__ import annotations
+
 import math
+from typing import Literal
+
+import torch
+import torch.nn.functional as F
+from einops import rearrange
+from torch import nn
 from torchdiffeq import odeint
 
-from einops import rearrange
-
-from rift_svc.utils import (
-    exists, 
-    lens_to_mask,
-) 
+from rift_svc.core_utils import exists, lens_to_mask
 
 
 def sample_time(time_schedule: Literal['uniform', 'lognorm'], size: int, device: torch.device):
@@ -33,9 +31,7 @@ class RF(nn.Module):
         self,
         transformer: nn.Module,
         time_schedule: Literal['uniform', 'lognorm'] = 'lognorm',
-        odeint_kwargs: dict = dict(
-            method='euler'
-        ),
+        odeint_kwargs: dict | None = None,
     ):
         super().__init__()
 
@@ -44,7 +40,7 @@ class RF(nn.Module):
         self.dim = dim
 
         # Sampling related parameters
-        self.odeint_kwargs = odeint_kwargs
+        self.odeint_kwargs = dict(odeint_kwargs or {'method': 'euler'})
         self.time_schedule = time_schedule
 
         self.mel_min = -12
@@ -53,7 +49,11 @@ class RF(nn.Module):
 
     @property
     def device(self):
-        return next(self.parameters()).device
+        parameter = next(self.parameters(), None)
+        if parameter is not None:
+            return parameter.device
+        buffer = next(self.buffers(), None)
+        return buffer.device if buffer is not None else torch.device("cpu")
 
     @torch.no_grad()
     def sample(
@@ -69,13 +69,25 @@ class RF(nn.Module):
         ds_cfg_strength: float = 0.0,
         spk_cfg_strength: float = 0.0,
         skip_cfg_strength: float = 0.0,
-        cfg_skip_layers: Union[int, List[int], None] = None,
+        cfg_skip_layers: int | list[int] | None = None,
         cfg_rescale: float = 0.7,
+        noise: torch.Tensor | None = None,
+        generator: torch.Generator | None = None,
+        seed: int | None = None,
+        return_trajectory: bool = False,
     ):
         self.eval()
 
+        if steps < 1:
+            raise ValueError("steps must be at least 1")
+        if seed is not None and generator is not None:
+            raise ValueError("pass either seed or generator, not both")
+
         batch, mel_seq_len, num_mel_channels = src_mel.shape
         device = src_mel.device
+
+        if seed is not None:
+            generator = torch.Generator(device=device).manual_seed(seed)
 
         if not exists(frame_len):
             frame_len = torch.full((batch,), mel_seq_len, device=device)
@@ -173,17 +185,49 @@ class RF(nn.Module):
             
             return pred
 
-        # Noise input
-        y0 = torch.randn(batch, mel_seq_len, num_mel_channels, device=self.device)
+        # Inference can provide deterministic noise per segment.  Avoiding a
+        # hidden global RNG also makes batched and single-segment conversion
+        # produce the same result for the same seed.
+        if noise is None:
+            y0 = torch.randn(
+                batch,
+                mel_seq_len,
+                num_mel_channels,
+                device=device,
+                dtype=src_mel.dtype,
+                generator=generator,
+            )
+        else:
+            if noise.shape != (batch, mel_seq_len, num_mel_channels):
+                raise ValueError(
+                    "noise must have shape "
+                    f"{(batch, mel_seq_len, num_mel_channels)}, got {tuple(noise.shape)}"
+                )
+            y0 = noise.to(device=device, dtype=src_mel.dtype)
         # mask out the padded tokens
         y0 = y0.masked_fill(~mask.unsqueeze(-1), 0)
 
         t_start = 0
-        t = torch.linspace(t_start, 1, steps, device=self.device)
+        t = torch.linspace(t_start, 1, steps, device=device)
 
-        trajectory = odeint(fn, y0, t, **self.odeint_kwargs)
+        method = self.odeint_kwargs.get('method', 'euler')
+        if method == 'euler':
+            # The default solver only needs the final state during inference.
+            # Keeping the state in place avoids an O(steps * frames) trajectory.
+            sampled = y0
+            states = [sampled] if return_trajectory else None
+            for index in range(max(0, steps - 1)):
+                sampled = sampled + (t[index + 1] - t[index]) * fn(t[index], sampled)
+                if states is not None:
+                    states.append(sampled)
+            trajectory = torch.stack(states) if states is not None else None
+        else:
+            solver_times = t if return_trajectory else t[[0, -1]]
+            trajectory = odeint(fn, y0, solver_times, **self.odeint_kwargs)
+            sampled = trajectory[-1]
+            if not return_trajectory:
+                trajectory = None
 
-        sampled = trajectory[-1]
         out = self.denorm_mel(sampled)
         out = torch.where(mask.unsqueeze(-1), out, src_mel)
 
@@ -197,9 +241,9 @@ class RF(nn.Module):
         rms: torch.Tensor,        # [b n]
         cvec: torch.Tensor,       # [b n d]
         frame_len: torch.Tensor | None = None,
-        drop_speaker: Union[bool, Bool[torch.Tensor, "b"]] = False,
+        drop_speaker: bool | torch.Tensor = False,
     ):
-        batch, seq_len, dtype, device = *mel.shape[:2], mel.dtype, self.device
+        batch, seq_len, device = mel.shape[0], mel.shape[1], self.device
 
         # Handle lengths and masks
         if not exists(frame_len):

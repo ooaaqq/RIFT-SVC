@@ -2,12 +2,12 @@ import json
 import os
 import random
 from functools import partial
-from typing import Literal
+
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 
-from rift_svc.utils import linear_interpolate_tensor, nearest_interpolate_tensor
+from rift_svc.core_utils import linear_interpolate_tensor
 
 pt_load = partial(torch.load, weights_only=True, map_location='cpu', mmap=True)
 
@@ -87,14 +87,14 @@ class SVCDataset(Dataset):
                 cvec_ds = cvec_ds[start:end]
             frame_len = self.max_frame_len
 
-        result = dict(
-            spk_id = spk_id,
-            mel = mel,
-            rms = rms,
-            f0 = f0,
-            cvec = cvec,
-            frame_len = frame_len
-        )
+        result = {
+            "spk_id": spk_id,
+            "mel": mel,
+            "rms": rms,
+            "f0": f0,
+            "cvec": cvec,
+            "frame_len": frame_len,
+        }
 
         if self.use_cvec_downsampled:
             result['cvec_ds'] = cvec_ds

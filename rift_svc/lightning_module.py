@@ -1,19 +1,19 @@
 import gc
+import inspect
 import os
+from functools import partial
+
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torchaudio
-import wandb
-from functools import partial
-import inspect
-
 from pytorch_lightning import LightningModule
 
-from rift_svc.metrics import mcd, psnr, si_snr
 from rift_svc.feature_extractors import get_mel_spectrogram
+from rift_svc.metrics import mcd, psnr, si_snr
 from rift_svc.nsf_hifigan import NsfHifiGAN
-from rift_svc.utils import draw_mel_specs, l2_grad_norm
+from rift_svc.training_utils import l2_grad_norm
+from rift_svc.visualization import draw_mel_specs
 
 
 class RIFTSVCLightningModule(LightningModule):
@@ -259,9 +259,7 @@ class RIFTSVCLightningModule(LightningModule):
             bool: True if WandB logger is being used, False otherwise
         """
         from pytorch_lightning.loggers import WandbLogger
-        if isinstance(self.logger, WandbLogger):
-            return True
-        return False
+        return isinstance(self.logger, WandbLogger)
     
     @property
     def is_using_tensorboard(self):
@@ -272,9 +270,7 @@ class RIFTSVCLightningModule(LightningModule):
             bool: True if TensorBoard logger is being used, False otherwise
         """
         from pytorch_lightning.loggers import TensorBoardLogger
-        if isinstance(self.logger, TensorBoardLogger):
-            return True
-        return False
+        return isinstance(self.logger, TensorBoardLogger)
     
     @property
     def logger_type(self):
@@ -354,10 +350,10 @@ class RIFTSVCLightningModule(LightningModule):
             elif hasattr(logger, 'experiment') and hasattr(logger.experiment, 'add_audio'):
                 # TensorBoardLogger
                 import soundfile as sf
-                audio, sample_rate = sf.read(file_path)
+                audio, _sample_rate = sf.read(file_path)
                 logger.experiment.add_audio(name, audio, step, sample_rate=44100)
-        except Exception as e:
-            print(f"Warning: Failed to log audio {name}: {e}")
+        except Exception as exc:  # noqa: BLE001 - logging must not stop training
+            print(f"Warning: Failed to log audio {name}: {exc}")
 
     def _log_image(self, logger, name, file_path, step):
         """
@@ -378,12 +374,12 @@ class RIFTSVCLightningModule(LightningModule):
                 }, step=step)
             elif hasattr(logger, 'experiment') and hasattr(logger.experiment, 'add_image'):
                 # TensorBoardLogger
-                import PIL.Image
                 import numpy as np
+                import PIL.Image
                 import torch
                 image = PIL.Image.open(file_path)
                 image_array = np.array(image)
                 image_tensor = torch.from_numpy(image_array).permute(2, 0, 1)  # HWC to CHW
                 logger.experiment.add_image(name, image_tensor, step)
-        except Exception as e:
-            print(f"Warning: Failed to log image {name}: {e}")
+        except Exception as exc:  # noqa: BLE001 - logging must not stop training
+            print(f"Warning: Failed to log image {name}: {exc}")

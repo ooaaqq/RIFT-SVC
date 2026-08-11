@@ -1,17 +1,19 @@
 import os
+
 import hydra
 import pytorch_lightning as pl
 import torch
 from omegaconf import DictConfig, OmegaConf
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
-from pytorch_lightning.loggers import WandbLogger, TensorBoardLogger
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from torch.utils.data import DataLoader
 
-from rift_svc import DiT, RF
 from rift_svc.dataset import SVCDataset, collate_fn
+from rift_svc.dit import DiT
 from rift_svc.lightning_module import RIFTSVCLightningModule
-from rift_svc.utils import CustomProgressBar, load_state_dict
 from rift_svc.optim import get_optimizer
+from rift_svc.rf import RF
+from rift_svc.training_utils import CustomProgressBar, load_state_dict
 
 torch.set_float32_matmul_precision('high')
 

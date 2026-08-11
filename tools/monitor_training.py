@@ -13,7 +13,6 @@ from pathlib import Path
 
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 
-
 METRIC_TAGS = {
     "MCD": "val/mcd",
     "SI-SNR": "val/si_snr",
@@ -23,21 +22,31 @@ METRIC_TAGS = {
 CHECKPOINT_STEP_RE = re.compile(r"(?:model|full)-step=(\d+)\.ckpt$")
 
 
-def latest_event_file(log_dir: Path) -> Path | None:
-    files = list(log_dir.glob("events.out.tfevents.*"))
-    return max(files, key=lambda path: path.stat().st_mtime) if files else None
-
-
 def read_scalars(log_dir: Path) -> tuple[dict[str, list], str | None]:
-    event_file = latest_event_file(log_dir)
-    if event_file is None:
+    """Read and merge every TensorBoard event file in a run directory."""
+    event_files = sorted(log_dir.rglob("events.out.tfevents.*"))
+    if not event_files:
         return {}, None
-    accumulator = EventAccumulator(str(event_file), size_guidance={"scalars": 0})
-    accumulator.Reload()
-    return {
-        tag: accumulator.Scalars(tag)
-        for tag in accumulator.Tags().get("scalars", [])
-    }, event_file.name
+
+    values_by_tag: dict[str, dict[int, object]] = {}
+    for event_file in event_files:
+        accumulator = EventAccumulator(
+            str(event_file), size_guidance={"scalars": 0}
+        )
+        accumulator.Reload()
+        for tag in accumulator.Tags().get("scalars", []):
+            tag_values = values_by_tag.setdefault(tag, {})
+            for value in accumulator.Scalars(tag):
+                previous = tag_values.get(int(value.step))
+                if previous is None or value.wall_time >= previous.wall_time:
+                    tag_values[int(value.step)] = value
+
+    scalars = {
+        tag: [values[step] for step in sorted(values)]
+        for tag, values in values_by_tag.items()
+    }
+    event_name = ", ".join(path.name for path in event_files)
+    return scalars, event_name
 
 
 def checkpoint_info(directory: Path, prefix: str) -> tuple[int | None, int, int]:
@@ -134,15 +143,23 @@ def render(args: argparse.Namespace) -> str:
         f"Progress: {current_step:,}/{args.max_steps:,} | rate {rate:.2f} step/s | ETA {eta}"
         if rate
         else f"Progress: {current_step:,}/{args.max_steps:,} | rate - | ETA -",
-        f"Train loss: {format_metric(float(last_train.value) if last_train else None)}"
-        f" | process: {process_status(args.run_name)}",
+        (
+            f"Train loss: {format_metric(float(last_train.value) if last_train else None)}"
+            f" | process: {process_status(args.run_name)}"
+        ),
         f"GPU: {gpu_status()}",
-        f"Data disk: {disk_status(Path('/root/autodl-tmp'))}"
-        f" | AutoFS: {disk_status(Path('/root/autodl-fs'))}",
-        f"Weights: step {weight_step or '-'} | {weight_count} files"
-        f" | {weight_bytes / 1024**3:.1f} GiB",
-        f"Full resume: step {full_step or '-'} | {full_count} files"
-        f" | {full_bytes / 1024**3:.1f} GiB",
+        (
+            f"Data disk: {disk_status(Path('/root/autodl-tmp'))}"
+            f" | AutoFS: {disk_status(Path('/root/autodl-fs'))}"
+        ),
+        (
+            f"Weights: step {weight_step or '-'} | {weight_count} files"
+            f" | {weight_bytes / 1024**3:.1f} GiB"
+        ),
+        (
+            f"Full resume: step {full_step or '-'} | {full_count} files"
+            f" | {full_bytes / 1024**3:.1f} GiB"
+        ),
         "",
         "Step | MCD ↓ | SI-SNR ↑ | PSNR ↑ | MSE ↓",
         "-----|-------|----------|--------|------",
