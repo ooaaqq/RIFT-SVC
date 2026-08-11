@@ -2,6 +2,7 @@ import click
 import librosa
 import numpy as np
 import pyloudnorm as pyln
+import soundfile as sf
 import torch
 import torchaudio
 from pathlib import Path
@@ -65,7 +66,8 @@ def load_models(model_path, device, use_fp16=True):
 def load_audio(file_path, target_sr):
     """Load and preprocess audio file"""
     click.echo("Loading audio...")
-    audio, sr = torchaudio.load(file_path)
+    audio_np, sr = sf.read(file_path, dtype="float32", always_2d=True)
+    audio = torch.from_numpy(np.ascontiguousarray(audio_np.T))
     if sr != target_sr:
         audio = torchaudio.functional.resample(audio, sr, target_sr)
 
@@ -577,7 +579,7 @@ def main(
     click.echo("Saving output...")
     output_path = Path(output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    torchaudio.save(output, torch.from_numpy(result_audio).unsqueeze(0), sample_rate)
+    sf.write(output, result_audio.astype(np.float32), sample_rate)
     click.echo("Done!")
 
 

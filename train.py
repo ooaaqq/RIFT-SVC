@@ -80,8 +80,15 @@ def main(cfg: DictConfig):
         cfg=cfg_dict
     )
 
+    run_name = cfg.training.run_name
+    weights_checkpoint_dir = cfg.training.get(
+        'weights_checkpoint_dir', os.path.join('ckpts', run_name)
+    )
+    full_checkpoint_dir = cfg.training.get('full_checkpoint_dir', None)
+    full_save_per_steps = int(cfg.training.get('full_save_per_steps', 0))
+
     checkpoint_callback = ModelCheckpoint(
-        dirpath=os.path.join('ckpts', cfg.training.run_name),
+        dirpath=weights_checkpoint_dir,
         filename='model-{step}',
         save_top_k=-1,
         save_last='link',
@@ -91,9 +98,6 @@ def main(cfg: DictConfig):
 
     # Logger selection based on config
     logger_type = cfg.training.get('logger', 'wandb').lower()
-    run_name = cfg.training.run_name
-    # Update checkpoint directory to use run_name
-    checkpoint_callback.dirpath = os.path.join('ckpts', run_name)
     
     if logger_type == 'wandb':
         # Use Weights & Biases logger
@@ -111,7 +115,9 @@ def main(cfg: DictConfig):
             logger.experiment.config.update(cfg_dict)
     elif logger_type == 'tensorboard':
         # Use TensorBoard logger
-        tensorboard_log_dir = os.path.join('logs', run_name)
+        tensorboard_log_dir = cfg.training.get(
+            'tensorboard_log_dir', os.path.join('logs', run_name)
+        )
         logger = TensorBoardLogger(
             save_dir=tensorboard_log_dir,
             name=None,  # Use the directory as is without adding another subfolder
@@ -121,6 +127,17 @@ def main(cfg: DictConfig):
         raise ValueError(f"Invalid logger type: {logger_type}")
 
     callbacks = [checkpoint_callback, CustomProgressBar()]
+    if full_checkpoint_dir and full_save_per_steps > 0:
+        callbacks.append(
+            ModelCheckpoint(
+                dirpath=full_checkpoint_dir,
+                filename='full-{step}',
+                save_top_k=-1,
+                save_last='link',
+                every_n_train_steps=full_save_per_steps,
+                save_weights_only=False,
+            )
+        )
     if lr_scheduler is not None:
         callbacks.append(LearningRateMonitor(logging_interval='step'))
 
