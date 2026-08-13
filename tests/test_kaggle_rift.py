@@ -5,7 +5,7 @@ import hashlib
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.kaggle_rift import build_job, name_value
+from scripts.kaggle_rift import DEFAULT_ACCELERATOR, build_job, name_value
 
 
 def arguments() -> argparse.Namespace:
@@ -30,6 +30,10 @@ def arguments() -> argparse.Namespace:
 
 def test_name_value_is_filename_safe() -> None:
     assert name_value(-1.5) == "m1p5"
+
+
+def test_cloud_jobs_use_kaggle_t4() -> None:
+    assert DEFAULT_ACCELERATOR == "NvidiaTeslaT4"
 
 
 @patch(

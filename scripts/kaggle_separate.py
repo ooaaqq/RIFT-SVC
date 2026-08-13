@@ -26,6 +26,7 @@ KERNEL_SOURCE = REPO_ROOT / "kaggle/separation/kernel.py"
 DEFAULT_OWNER = "eeviriyi"
 DEFAULT_DATASET_SLUG = "rift-separation-cli-input"
 DEFAULT_KERNEL_SLUG = "rift-separation-cli"
+DEFAULT_ACCELERATOR = "NvidiaTeslaT4"
 
 
 def parse_args() -> argparse.Namespace:
@@ -180,6 +181,7 @@ def main() -> None:
                     "is_private": "true",
                     "enable_gpu": "true",
                     "enable_tpu": "false",
+                    "machine_shape": DEFAULT_ACCELERATOR,
                     "enable_internet": "true",
                     "dataset_sources": [dataset_ref],
                     "competition_sources": [],
@@ -191,7 +193,17 @@ def main() -> None:
             + "\n",
             encoding="utf-8",
         )
-        run(["kaggle", "kernels", "push", "-p", str(kernel_dir)])
+        run(
+            [
+                "kaggle",
+                "kernels",
+                "push",
+                "-p",
+                str(kernel_dir),
+                "--accelerator",
+                DEFAULT_ACCELERATOR,
+            ]
+        )
         wait_for_kernel(kernel_ref, args.poll_interval, args.timeout)
         run(["kaggle", "kernels", "output", kernel_ref, "-p", str(download_dir), "-o"])
 

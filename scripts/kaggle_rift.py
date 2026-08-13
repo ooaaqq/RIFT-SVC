@@ -25,6 +25,7 @@ KERNEL_SOURCE = REPO_ROOT / "kaggle/rift/kernel.py"
 DEFAULT_OWNER = "eeviriyi"
 DEFAULT_DATASET_SLUG = "rift-svc-cli-input"
 DEFAULT_KERNEL_SLUG = "rift-svc-cli-inference"
+DEFAULT_ACCELERATOR = "NvidiaTeslaT4"
 DEFAULT_REPO_URL = "https://github.com/ooaaqq/RIFT-SVC.git"
 DEFAULT_MODEL_REPO = "ooaaqq/rift-svc-luzao-25k"
 DEFAULT_MODEL_SHA256 = (
@@ -201,6 +202,7 @@ def main() -> None:
                     "is_private": "true",
                     "enable_gpu": "true",
                     "enable_tpu": "false",
+                    "machine_shape": DEFAULT_ACCELERATOR,
                     "enable_internet": "true",
                     "dataset_sources": [dataset_ref],
                     "competition_sources": [],
@@ -212,7 +214,17 @@ def main() -> None:
             + "\n",
             encoding="utf-8",
         )
-        run(["kaggle", "kernels", "push", "-p", str(kernel_dir)])
+        run(
+            [
+                "kaggle",
+                "kernels",
+                "push",
+                "-p",
+                str(kernel_dir),
+                "--accelerator",
+                DEFAULT_ACCELERATOR,
+            ]
+        )
         wait_for_kernel(kernel_ref, args.poll_interval, args.timeout)
         run(["kaggle", "kernels", "output", kernel_ref, "-p", str(download_dir), "-o"])
 

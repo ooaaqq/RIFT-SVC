@@ -69,6 +69,10 @@ uv run python scripts/kaggle_rift.py vocals.wav \
 仓库、checkpoint、ContentVec、RMVPE 和 HiFi-GAN 都放在 `/kaggle/temp`，不会作为
 Kernel 输出下载。`/kaggle/working` 只保留最终 WAV 和 manifest。
 
+两类 Script Kernel 都固定使用网页中的 `GPU T4 ×2`（API 名称
+`NvidiaTeslaT4`），并沿用 Kaggle 预装的 CUDA PyTorch。当前推理只使用其中一张
+T4，不为 P100 降级或重装 PyTorch。
+
 ## 排错
 
 脚本会在 Kernel 失败或超时后自动打印日志。也可以手动检查：

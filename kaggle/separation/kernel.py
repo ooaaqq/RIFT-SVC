@@ -17,7 +17,6 @@ RUNTIME_ROOT = Path("/kaggle/temp/rift-separation-runtime")
 OUTPUT_ROOT = WORK_ROOT / "separation-output"
 MSST_REPO = "https://github.com/ZFTurbo/Music-Source-Separation-Training.git"
 MSST_COMMIT = "e247dfe4abc1f17c69dff719207fe045dc04413a"
-PYTORCH_CU126_INDEX = "https://download.pytorch.org/whl/cu126"
 
 PROFILES = {
     "anvuew-dereverb-22.5050": {
@@ -91,30 +90,6 @@ def find_job() -> tuple[Path, dict]:
     return job_path, json.loads(job_path.read_text(encoding="utf-8"))
 
 
-def install_pascal_torch_if_needed() -> None:
-    capability = subprocess.check_output(
-        [
-            "nvidia-smi",
-            "--query-gpu=compute_cap",
-            "--format=csv,noheader",
-        ],
-        text=True,
-    ).splitlines()[0].strip()
-    if float(capability) < 7.0:
-        run(
-            [
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "-q",
-                "--index-url",
-                PYTORCH_CU126_INDEX,
-                "torch==2.6.0",
-            ]
-        )
-
-
 def main() -> None:
     job_path, job = find_job()
     profile_name = job["profile"]
@@ -134,7 +109,6 @@ def main() -> None:
     run(["git", "clone", MSST_REPO, str(msst_dir)])
     run(["git", "checkout", MSST_COMMIT], cwd=msst_dir)
     run([sys.executable, "-m", "pip", "install", "-q", *PIP_REQUIREMENTS])
-    install_pascal_torch_if_needed()
     sys.path.insert(0, str(msst_dir))
 
     import soundfile as sf

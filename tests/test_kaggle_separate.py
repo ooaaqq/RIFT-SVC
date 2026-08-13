@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from scripts.kaggle_separate import build_job
+from scripts.kaggle_separate import DEFAULT_ACCELERATOR, build_job
 from scripts.separation_profiles import PROFILES
 
 
@@ -20,6 +20,10 @@ def test_cloud_kernel_profiles_match_local_cli() -> None:
     spec.loader.exec_module(module)
 
     assert module.PROFILES == PROFILES
+
+
+def test_cloud_jobs_use_kaggle_t4() -> None:
+    assert DEFAULT_ACCELERATOR == "NvidiaTeslaT4"
 
 
 @pytest.mark.parametrize("profile", sorted(PROFILES))
