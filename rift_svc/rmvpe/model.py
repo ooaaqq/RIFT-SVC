@@ -16,7 +16,7 @@ class E2E0(nn.Module):
         in_channels=1,
         en_out_channels=16,
     ):
-        super(E2E0, self).__init__()
+        super().__init__()
         self.unet = DeepUnet0(
             kernel_size,
             n_blocks,

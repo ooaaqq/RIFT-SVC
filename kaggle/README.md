@@ -89,7 +89,7 @@ kaggle kernels output eeviriyi/rift-svc-cli-inference \
   -p ./kaggle-output -o
 ```
 
-## 辅助分离 Notebook
+## 辅助分离
 
 分离任务也可以完全通过 CLI 提交：
 
@@ -112,5 +112,5 @@ revision、权重文件和配置文件。对应的固定私有资源是：
 - 输入 Dataset：`eeviriyi/rift-separation-cli-input`
 - Script Kernel：`eeviriyi/rift-separation-cli`
 
-现有 `.ipynb` 暂时保留作已验证行为参考。等新 Script Kernel 至少实际跑通 Anvuew
-Dereverb、Anvuew Karaoke 和一个 MelBand profile 后，再统一删除旧 Notebook。
+RIFT 与以上四个分离 profile 均已通过 T4 Script Kernel 的真实端到端验证。旧
+Notebook 已删除，后续只维护本地 CLI 与两个 Script Kernel。
