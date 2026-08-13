@@ -73,8 +73,8 @@ def parse_args() -> argparse.Namespace:
         help="prepare and print the job without uploading or running it",
     )
     args = parser.parse_args()
-    if args.steps < 1:
-        parser.error("--steps must be at least 1")
+    if args.steps < 2:
+        parser.error("--steps must be at least 2")
     if args.poll_interval < 5:
         parser.error("--poll-interval must be at least 5 seconds")
     if args.timeout < 60:
@@ -183,7 +183,11 @@ def main() -> None:
             run(dataset_command)
         else:
             run(["kaggle", "datasets", "create", "-p", str(dataset_dir)])
-        wait_for_dataset(dataset_ref, min(args.timeout, 30 * 60))
+        wait_for_dataset(
+            dataset_ref,
+            {input_path.name, "job.json"},
+            min(args.timeout, 30 * 60),
+        )
 
         shutil.copy2(KERNEL_SOURCE, kernel_dir / "kernel.py")
         (kernel_dir / "kernel-metadata.json").write_text(

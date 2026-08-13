@@ -52,20 +52,26 @@ def current_datasets() -> set[str]:
     return {item["ref"] for item in json.loads(result.stdout)}
 
 
-def wait_for_dataset(dataset_ref: str, timeout: int) -> None:
+def wait_for_dataset(
+    dataset_ref: str,
+    expected_files: set[str],
+    timeout: int,
+) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         result = run(
-            ["kaggle", "datasets", "status", dataset_ref],
+            ["kaggle", "datasets", "files", dataset_ref, "--format", "json"],
             capture=True,
             check=False,
         )
-        status = (result.stdout + result.stderr).strip().lower()
-        print(f"Dataset status: {status or 'unknown'}", flush=True)
-        if result.returncode == 0 and status == "ready":
-            return
-        if any(word in status for word in ("error", "failed", "invalid")):
-            raise RuntimeError(f"dataset processing failed: {status}")
+        if result.returncode == 0:
+            available = {item["name"] for item in json.loads(result.stdout)}
+            print(f"Dataset files: {sorted(available)}", flush=True)
+            if expected_files <= available:
+                return
+        else:
+            detail = (result.stdout + result.stderr).strip()
+            print(f"Dataset files unavailable: {detail}", flush=True)
         time.sleep(10)
     raise TimeoutError(f"dataset did not become ready within {timeout} seconds")
 

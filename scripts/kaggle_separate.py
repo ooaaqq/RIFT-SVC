@@ -162,7 +162,11 @@ def main() -> None:
             run(dataset_command)
         else:
             run(["kaggle", "datasets", "create", "-p", str(dataset_dir)])
-        wait_for_dataset(dataset_ref, min(args.timeout, 30 * 60))
+        wait_for_dataset(
+            dataset_ref,
+            {input_path.name, "job.json"},
+            min(args.timeout, 30 * 60),
+        )
 
         shutil.copy2(KERNEL_SOURCE, kernel_dir / "kernel.py")
         (kernel_dir / "kernel-metadata.json").write_text(
