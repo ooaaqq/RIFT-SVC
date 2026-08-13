@@ -1,2 +1,3 @@
-from .nvSTFT import STFT
-from .vocoder import Vocoder, NsfHifiGAN
+from .vocoder import NsfHifiGAN
+
+__all__ = ["NsfHifiGAN"]

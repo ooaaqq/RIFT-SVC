@@ -18,9 +18,11 @@ class AdaLayerNormZero(nn.Module):
 
         self.norm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
 
-    def forward(self, x, emb = None):
+    def forward(self, x, emb=None):
         emb = self.proj(self.silu(emb))
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = torch.chunk(emb, 6, dim=1)
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = torch.chunk(
+            emb, 6, dim=1
+        )
 
         x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
         return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
@@ -43,20 +45,31 @@ class AdaLayerNormZero_Final(nn.Module):
         x = self.norm(x) * (1 + scale)[:, None, :] + shift[:, None, :]
         return x
 
+
 # ReLU^2
 class ReLU2(nn.Module):
     def forward(self, x):
         return F.relu(x, inplace=True).square()
 
+
 # FeedForward
 class ConvMLP(nn.Module):
-    def __init__(self, dim: int, dim_out: int | None = None, mult: float = 4, dropout: float = 0.0, kernel_size: int = 7):
+    def __init__(
+        self,
+        dim: int,
+        dim_out: int | None = None,
+        mult: float = 4,
+        dropout: float = 0.0,
+        kernel_size: int = 7,
+    ):
         super().__init__()
         inner_dim = int(dim * mult)
         dim_out = dim_out if dim_out is not None else dim
 
-        #self.dwconv = nn.Conv1d(dim, dim, kernel_size=7, padding=3, groups=dim)
-        self.dwconv = nn.Conv1d(dim, dim, kernel_size=kernel_size, padding=kernel_size//2, groups=dim)
+        # self.dwconv = nn.Conv1d(dim, dim, kernel_size=7, padding=3, groups=dim)
+        self.dwconv = nn.Conv1d(
+            dim, dim, kernel_size=kernel_size, padding=kernel_size // 2, groups=dim
+        )
         self.norm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
         self.activation = ReLU2()
         self.dropout = nn.Dropout(dropout)
@@ -85,14 +98,15 @@ class Attention(nn.Module):
         super().__init__()
 
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("Attention requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError(
+                "Attention requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
 
-        self.dim = dim
         assert dim % head_dim == 0
         self.head_dim = head_dim
         self.num_heads = int(dim // head_dim)
         self.inner_dim = dim
-        self.dropout = dropout
+        # Published checkpoints were trained with model-width scaling.
         self.scale = 1 / dim
 
         self.q_proj = nn.Linear(dim, self.inner_dim)
@@ -109,7 +123,7 @@ class Attention(nn.Module):
         self,
         x: torch.Tensor,
         mask: torch.Tensor | None = None,
-        rope = None, 
+        rope=None,
     ) -> torch.Tensor:
         batch_size = x.shape[0]
 
@@ -121,7 +135,9 @@ class Attention(nn.Module):
         # apply rotary position embedding
         if rope is not None:
             freqs, xpos_scale = rope
-            q_xpos_scale, k_xpos_scale = (xpos_scale, xpos_scale ** -1.) if xpos_scale is not None else (1., 1.)
+            q_xpos_scale, k_xpos_scale = (
+                (xpos_scale, xpos_scale**-1.0) if xpos_scale is not None else (1.0, 1.0)
+            )
 
             query = apply_rotary_pos_emb(query, freqs, q_xpos_scale)
             key = apply_rotary_pos_emb(key, freqs, k_xpos_scale)
@@ -139,12 +155,22 @@ class Attention(nn.Module):
         # mask
         if mask is not None:
             attn_mask = mask
-            attn_mask = rearrange(attn_mask, 'b n -> b 1 1 n')
-            attn_mask = attn_mask.expand(batch_size, self.num_heads, query.shape[-2], key.shape[-2])
+            attn_mask = rearrange(attn_mask, "b n -> b 1 1 n")
+            attn_mask = attn_mask.expand(
+                batch_size, self.num_heads, query.shape[-2], key.shape[-2]
+            )
         else:
             attn_mask = None
 
-        x = F.scaled_dot_product_attention(query, key, value, attn_mask=attn_mask, dropout_p=0.0, is_causal=False, scale=self.scale)
+        x = F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=attn_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            scale=self.scale,
+        )
         x = x.transpose(1, 2).reshape(batch_size, -1, self.num_heads * head_dim)
         x = x.to(query.dtype)
 
@@ -153,29 +179,35 @@ class Attention(nn.Module):
         x = self.attn_dropout(x)
 
         if mask is not None:
-            mask = rearrange(mask, 'b n -> b n 1')
-            x = x.masked_fill(~mask, 0.)
+            mask = rearrange(mask, "b n -> b n 1")
+            x = x.masked_fill(~mask, 0.0)
 
         return x
 
 
 # DiT Block
 class DiTBlock(nn.Module):
-
     def __init__(
-            self, dim: int, head_dim: int, ff_mult: float = 4, 
-            dropout: float = 0.0, kernel_size: int = 31):
+        self,
+        dim: int,
+        head_dim: int,
+        ff_mult: float = 4,
+        dropout: float = 0.0,
+        kernel_size: int = 31,
+    ):
         super().__init__()
 
         self.attn_norm = AdaLayerNormZero(dim)
         self.attn = Attention(
-            dim = dim,
-            head_dim = head_dim,
-            dropout = dropout,
+            dim=dim,
+            head_dim=head_dim,
+            dropout=dropout,
         )
-        
+
         self.mlp_norm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
-        self.mlp = ConvMLP(dim = dim, mult = ff_mult, dropout = dropout, kernel_size=kernel_size)
+        self.mlp = ConvMLP(
+            dim=dim, mult=ff_mult, dropout=dropout, kernel_size=kernel_size
+        )
 
     def forward(
         self,
@@ -192,7 +224,7 @@ class DiTBlock(nn.Module):
 
         # process attention output for input x
         x = x + gate_msa.unsqueeze(1) * attn_output
-        
+
         norm = self.mlp_norm(x) * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
         mlp_output = self.mlp(norm)
         x = x + gate_mlp.unsqueeze(1) * mlp_output

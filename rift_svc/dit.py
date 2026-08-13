@@ -16,9 +16,6 @@ from rift_svc.modules import (
 class CondEmbedding(nn.Module):
     def __init__(self, cvec_dim: int, cond_dim: int):
         super().__init__()
-        self.cvec_dim = cvec_dim
-        self.cond_dim = cond_dim
-
         self.f0_embed = nn.Linear(1, cond_dim)
         self.rms_embed = nn.Linear(1, cond_dim)
         self.cvec_embed = nn.Linear(cvec_dim, cond_dim)
@@ -27,13 +24,12 @@ class CondEmbedding(nn.Module):
         self.ln_cvec = nn.LayerNorm(cond_dim, elementwise_affine=False, eps=1e-6)
         self.ln = nn.LayerNorm(cond_dim, elementwise_affine=True, eps=1e-6)
 
-
     def forward(
-            self,
-            f0: torch.Tensor,
-            rms: torch.Tensor,
-            cvec: torch.Tensor,
-        ):
+        self,
+        f0: torch.Tensor,
+        rms: torch.Tensor,
+        cvec: torch.Tensor,
+    ):
         if f0.ndim == 2:
             f0 = f0.unsqueeze(-1)
         if rms.ndim == 2:
@@ -58,7 +54,7 @@ class InputEmbedding(nn.Module):
 
     def forward(self, x: torch.Tensor, cond_embed: torch.Tensor):
         x = self.mel_embed(x)
-        x = torch.cat((x, cond_embed), dim = -1)
+        x = torch.cat((x, cond_embed), dim=-1)
         x = self.proj(x)
         x = self.ln(x)
         return x
@@ -66,32 +62,39 @@ class InputEmbedding(nn.Module):
 
 # backbone using DiT blocks
 class DiT(nn.Module):
-    def __init__(self,
-                 dim: int, depth: int, head_dim: int = 64, dropout: float = 0.0, ff_mult: int = 4,
-                 n_mel_channels: int = 128, num_speaker: int = 1, cvec_dim: int = 768, 
-                 kernel_size: int = 31, zero_null_spk: bool = False,
-                 init_std: float = 1):
+    def __init__(
+        self,
+        dim: int,
+        depth: int,
+        head_dim: int = 64,
+        dropout: float = 0.0,
+        ff_mult: int = 4,
+        n_mel_channels: int = 128,
+        num_speaker: int = 1,
+        cvec_dim: int = 768,
+        kernel_size: int = 31,
+        zero_null_spk: bool = False,
+        init_std: float = 1,
+    ):
         super().__init__()
-    
-        self.num_speaker = num_speaker
+
         self.spk_embed = nn.Embedding(num_speaker, dim)
         self.null_spk_embed = nn.Embedding(1, dim)
         self.tembed = TimestepEmbedding(dim)
-        self.cond_embed = CondEmbedding(cvec_dim, dim)   
+        self.cond_embed = CondEmbedding(cvec_dim, dim)
         self.input_embed = InputEmbedding(n_mel_channels, dim)
 
         self.rotary_embed = RotaryEmbedding(head_dim)
 
         self.dim = dim
-        self.depth = depth
         self.transformer_blocks = nn.ModuleList(
             [
                 DiTBlock(
-                    dim = dim,
-                    head_dim = head_dim,
-                    ff_mult = ff_mult,
-                    dropout = dropout,
-                    kernel_size = kernel_size,
+                    dim=dim,
+                    head_dim=head_dim,
+                    ff_mult=ff_mult,
+                    dropout=dropout,
+                    kernel_size=kernel_size,
                 )
                 for _ in range(depth)
             ]
@@ -119,21 +122,28 @@ class DiT(nn.Module):
         if isinstance(module, nn.Linear):
             fan_out, fan_in = module.weight.shape
             # Spectral parameterization from the [paper](https://arxiv.org/abs/2310.17813).
-            init_std = (self.init_std / math.sqrt(fan_in)) * min(1, math.sqrt(fan_out / fan_in))
+            init_std = (self.init_std / math.sqrt(fan_in)) * min(
+                1, math.sqrt(fan_out / fan_in)
+            )
             torch.nn.init.normal_(module.weight, mean=0.0, std=init_std)
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Conv1d):
             # weight shape: (out_channels, in_channels/groups, kernel_size)
             fan_out = module.weight.shape[0]  # out_channels
-            fan_in = module.weight.shape[1] * module.weight.shape[2]  # (in_channels/groups) * kernel_size
-            init_std = (self.init_std / math.sqrt(fan_in)) * min(1, math.sqrt(fan_out / fan_in))
+            fan_in = (
+                module.weight.shape[1] * module.weight.shape[2]
+            )  # (in_channels/groups) * kernel_size
+            init_std = (self.init_std / math.sqrt(fan_in)) * min(
+                1, math.sqrt(fan_out / fan_in)
+            )
             torch.nn.init.normal_(module.weight, mean=0.0, std=init_std)
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=self.init_std/math.sqrt(self.dim))
-
+            torch.nn.init.normal_(
+                module.weight, mean=0.0, std=self.init_std / math.sqrt(self.dim)
+            )
 
     def forward(
         self,
@@ -148,14 +158,18 @@ class DiT(nn.Module):
     ):
         batch, seq_len = x.shape[0], x.shape[1]
         if time.ndim == 0:
-            time = repeat(time, ' -> b', b = batch)
-        
+            time = repeat(time, " -> b", b=batch)
+
         if isinstance(drop_speaker, bool):
-            drop_speaker = torch.full((batch,), drop_speaker, dtype=torch.bool, device=x.device)
+            drop_speaker = torch.full(
+                (batch,), drop_speaker, dtype=torch.bool, device=x.device
+            )
 
         spk_embeds = self.spk_embed(spk)
         null_spk_embeds = self.null_spk_embed(torch.zeros_like(spk, dtype=torch.long))
-        spk_embeds = torch.where(drop_speaker.unsqueeze(-1), null_spk_embeds, spk_embeds)
+        spk_embeds = torch.where(
+            drop_speaker.unsqueeze(-1), null_spk_embeds, spk_embeds
+        )
 
         t = self.tembed(time)
         t = t + spk_embeds
@@ -166,7 +180,7 @@ class DiT(nn.Module):
         rope = self.rotary_embed.forward_from_seq_len(seq_len)
 
         for block in self.transformer_blocks:
-            x = block(x, t, mask = mask, rope = rope)
+            x = block(x, t, mask=mask, rope=rope)
 
         x = self.norm_out(x, t)
         output = self.output(x)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import click
@@ -67,6 +68,7 @@ def main(
     output_subtype,
 ):
     """Convert one audio file with a single reusable inference runtime."""
+    logging.basicConfig(level=logging.INFO)
     runtime = InferenceRuntime(
         model,
         device=device,

@@ -5,16 +5,12 @@ from transformers import HubertModel
 
 
 def dynamic_range_compression_torch(
-        x: torch.Tensor,
-        C: float = 1,
-        clip_val: float = 1e-5
+    x: torch.Tensor, C: float = 1, clip_val: float = 1e-5
 ) -> torch.Tensor:
     return torch.log(torch.clamp(x, min=clip_val) * C)
 
 
-def spectral_normalize_torch(
-        magnitudes: torch.Tensor
-    ) -> torch.Tensor:
+def spectral_normalize_torch(magnitudes: torch.Tensor) -> torch.Tensor:
     return dynamic_range_compression_torch(magnitudes)
 
 
@@ -33,24 +29,7 @@ def get_mel_spectrogram(
     fmax: int | None = 16000,
     center: bool = False,
 ) -> torch.Tensor:
-    """
-    Calculate the mel spectrogram of an input signal.
-    This function uses slaney norm for the librosa mel filterbank (using librosa.filters.mel) and uses Hann window for STFT (using torch.stft).
-
-    Args:
-        y (torch.Tensor): Input signal with shape (n,).
-        n_fft (int, optional): FFT size. Defaults to 1024.
-        num_mels (int, optional): Number of mel bins. Defaults to 128.
-        sampling_rate (int, optional): Sampling rate of the input signal. Defaults to 44100.
-        hop_size (int, optional): Hop size for STFT. Defaults to 256.
-        win_size (int, optional): Window size for STFT. Defaults to 1024.
-        fmin (int, optional): Minimum frequency for mel filterbank. Defaults to 0.
-        fmax (int | None, optional): Maximum frequency for mel filterbank. If None, defaults to sr/2.0. Defaults to None.
-        center (bool, optional): Whether to pad the input to center the frames. Defaults to False.
-
-    Returns:
-        torch.Tensor: Mel spectrogram with shape (n_mels, mel_len).
-    """
+    """Return a log-Mel spectrogram with shape ``[batch, bins, frames]``."""
     if torch.min(y) < -1.0:
         print(f"[WARNING] Min value of input waveform signal is {torch.min(y)}")
     if torch.max(y) > 1.0:
@@ -117,16 +96,18 @@ class RMSExtractor(nn.Module):
             Tensor: RMS energy tensor of shape (batch, frames).
         """
         # Square the audio signal
-        audio_squared = inp ** 2
+        audio_squared = inp**2
 
         # Use the same padding as mel spectrogram
         padding = (self.window_length - self.hop_length) // 2
         audio_padded = torch.nn.functional.pad(
-            audio_squared, (padding, padding), mode='reflect'
+            audio_squared, (padding, padding), mode="reflect"
         )
 
         # Unfold to create frames with window_length instead of hop_length
-        frames = audio_padded.unfold(1, self.window_length, self.hop_length)  # Shape: (batch, frames, window_length)
+        frames = audio_padded.unfold(
+            1, self.window_length, self.hop_length
+        )  # Shape: (batch, frames, window_length)
 
         # Compute mean energy per frame
         mean_energy = frames.mean(dim=-1)  # Shape: (batch, frames)
