@@ -167,7 +167,7 @@ def main() -> None:
             run(["kaggle", "datasets", "create", "-p", str(dataset_dir)])
         wait_for_dataset(
             dataset_ref,
-            {input_path.name, "job.json"},
+            {job["input_name"], "job.json"},
             min(args.timeout, 30 * 60),
         )
 
