@@ -14,6 +14,7 @@ INPUT_ROOT = Path("/kaggle/input")
 WORK_ROOT = Path("/kaggle/working")
 RUNTIME_ROOT = Path("/kaggle/temp/rift-svc-runtime")
 OUTPUT_ROOT = WORK_ROOT / "rift-output"
+PYTORCH_CU126_INDEX = "https://download.pytorch.org/whl/cu126"
 
 
 def run(command: list[str], *, cwd: Path | None = None) -> None:
@@ -35,6 +36,31 @@ def find_job() -> tuple[Path, dict]:
         raise RuntimeError(f"expected exactly one job.json, found {jobs}")
     job_path = jobs[0]
     return job_path, json.loads(job_path.read_text(encoding="utf-8"))
+
+
+def install_pascal_torch_if_needed() -> None:
+    capability = subprocess.check_output(
+        [
+            "nvidia-smi",
+            "--query-gpu=compute_cap",
+            "--format=csv,noheader",
+        ],
+        text=True,
+    ).splitlines()[0].strip()
+    if float(capability) < 7.0:
+        run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-q",
+                "--index-url",
+                PYTORCH_CU126_INDEX,
+                "torch==2.6.0",
+                "torchaudio==2.6.0",
+            ]
+        )
 
 
 def main() -> None:
@@ -66,6 +92,7 @@ def main() -> None:
             str(repo_dir / "requirements-kaggle.txt"),
         ]
     )
+    install_pascal_torch_if_needed()
 
     import soundfile as sf
     import torch
