@@ -4,7 +4,11 @@ import json
 import subprocess
 from unittest.mock import patch
 
-from scripts.kaggle_common import wait_for_dataset, wait_for_kernel
+from scripts.kaggle_common import safe_audio_name, wait_for_dataset, wait_for_kernel
+
+
+def test_safe_audio_name_removes_kaggle_unsafe_characters(tmp_path) -> None:
+    assert safe_audio_name(tmp_path / "vocal [mvsep.com].WAV") == "vocal_mvsep.com.wav"
 
 
 def test_wait_for_dataset_checks_current_files() -> None:

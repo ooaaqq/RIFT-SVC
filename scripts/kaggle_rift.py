@@ -15,6 +15,7 @@ from scripts.kaggle_common import (
     current_datasets,
     probe_audio,
     run,
+    safe_audio_name,
     sha256,
     wait_for_dataset,
     wait_for_kernel,
@@ -89,14 +90,16 @@ def build_job(args: argparse.Namespace, input_path: Path) -> dict:
         f"-steps{args.steps}-ds{name_value(args.ds)}-spk{name_value(args.spk)}"
         f"-cfg{name_value(args.cfg_rescale)}-rf{args.robust_f0}-seed{args.seed}"
     )
-    output_name = f"{input_path.stem}__{suffix}.wav"
+    safe_name = safe_audio_name(input_path)
+    output_name = f"{Path(safe_name).stem}__{suffix}.wav"
     now = datetime.now(UTC)
     input_probe = probe_audio(input_path)
     return {
         "schema_version": 1,
         "job_id": f"{now.strftime('%Y%m%dT%H%M%SZ')}-{sha256(input_path)[:8]}",
         "submitted_at": now.isoformat(),
-        "input_name": input_path.name,
+        "input_name": safe_name,
+        "source_input_name": input_path.name,
         "input_sha256": sha256(input_path),
         "input_audio": input_probe,
         "output_name": output_name,
@@ -149,7 +152,7 @@ def main() -> None:
         kernel_dir.mkdir()
         download_dir.mkdir()
 
-        shutil.copy2(input_path, dataset_dir / input_path.name)
+        shutil.copy2(input_path, dataset_dir / job["input_name"])
         (dataset_dir / "job.json").write_text(
             json.dumps(job, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",

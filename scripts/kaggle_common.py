@@ -12,6 +12,14 @@ from pathlib import Path
 AUDIO_EXTENSIONS = {".wav", ".flac", ".m4a", ".mp3", ".ogg", ".opus"}
 
 
+def safe_audio_name(path: Path) -> str:
+    """Return a Kaggle-safe basename while retaining the audio extension."""
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", path.stem)
+    stem = re.sub(r"_+", "_", stem).strip("._") or "audio"
+    suffix = path.suffix.lower()
+    return f"{stem}{suffix}"
+
+
 def run(
     command: list[str],
     *,

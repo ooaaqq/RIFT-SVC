@@ -15,6 +15,7 @@ from scripts.kaggle_common import (
     current_datasets,
     probe_audio,
     run,
+    safe_audio_name,
     sha256,
     wait_for_dataset,
     wait_for_kernel,
@@ -68,7 +69,8 @@ def build_job(args: argparse.Namespace, input_path: Path) -> dict:
             f"{sha256(input_path)[:8]}"
         ),
         "submitted_at": now.isoformat(),
-        "input_name": input_path.name,
+        "input_name": safe_audio_name(input_path),
+        "source_input_name": input_path.name,
         "input_sha256": sha256(input_path),
         "input_audio": probe_audio(input_path),
         "profile": args.model,
@@ -129,7 +131,7 @@ def main() -> None:
         kernel_dir.mkdir()
         download_dir.mkdir()
 
-        shutil.copy2(input_path, dataset_dir / input_path.name)
+        shutil.copy2(input_path, dataset_dir / job["input_name"])
         (dataset_dir / "job.json").write_text(
             json.dumps(job, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",

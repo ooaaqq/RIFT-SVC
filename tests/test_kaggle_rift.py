@@ -49,9 +49,11 @@ def test_build_job_records_hash_parameters_and_dynamic_name(
     job = build_job(arguments(), input_path)
 
     assert job["input_sha256"] == hashlib.sha256(b"audio").hexdigest()
+    assert job["source_input_name"] == "dry vocal.wav"
+    assert job["input_name"] == "dry_vocal.wav"
     assert job["params"]["infer_steps"] == 32
     assert job["params"]["robust_f0"] == 0
     assert job["input_audio"]["sample_rate"] == "44100"
     assert job["output_name"] == (
-        "dry vocal__rift25k-spk-target-k0-steps32-ds0p2-spk0p8-cfg0p7-rf0-seed7.wav"
+        "dry_vocal__rift25k-spk-target-k0-steps32-ds0p2-spk0p8-cfg0p7-rf0-seed7.wav"
     )
