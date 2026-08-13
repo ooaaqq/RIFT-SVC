@@ -89,7 +89,12 @@ def wait_for_kernel(kernel_ref: str, poll_interval: int, timeout: int) -> None:
     deadline = time.monotonic() + timeout
     failure_states = {"ERROR", "CANCELLED", "FAILED"}
     while time.monotonic() < deadline:
-        status = kernel_status(kernel_ref)
+        try:
+            status = kernel_status(kernel_ref)
+        except (RuntimeError, subprocess.CalledProcessError) as error:
+            print(f"Kernel status unavailable: {error}", flush=True)
+            time.sleep(poll_interval)
+            continue
         print(f"Kernel status: {status}", flush=True)
         if status == "COMPLETE":
             return

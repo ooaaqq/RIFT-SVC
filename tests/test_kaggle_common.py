@@ -4,7 +4,7 @@ import json
 import subprocess
 from unittest.mock import patch
 
-from scripts.kaggle_common import wait_for_dataset
+from scripts.kaggle_common import wait_for_dataset, wait_for_kernel
 
 
 def test_wait_for_dataset_checks_current_files() -> None:
@@ -30,3 +30,16 @@ def test_wait_for_dataset_checks_current_files() -> None:
         capture=True,
         check=False,
     )
+
+
+def test_wait_for_kernel_retries_transient_status_failure() -> None:
+    with (
+        patch(
+            "scripts.kaggle_common.kernel_status",
+            side_effect=[subprocess.CalledProcessError(1, ["kaggle"]), "COMPLETE"],
+        ),
+        patch("scripts.kaggle_common.time.sleep") as sleep,
+    ):
+        wait_for_kernel("owner/kernel", poll_interval=5, timeout=60)
+
+    sleep.assert_called_once_with(5)
