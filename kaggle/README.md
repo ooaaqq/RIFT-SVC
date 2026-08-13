@@ -1,53 +1,112 @@
-# Kaggle 推理
+# Kaggle CLI 推理
 
-这是一个只做推理的 Kaggle 工作流。创建带 GPU 的 Notebook 并开启 Internet，
-把 Hugging Face token 放在 Kaggle Secret 中；下载工具会通过环境变量读取它。
+这套流程用于从本地提交一条音频到 Kaggle GPU，并在完成后自动下载结果，不需要
+打开 Notebook 页面。
 
-## 安装
+## 固定资源
+
+默认使用以下私有 Kaggle 资源：
+
+- 输入 Dataset：`eeviriyi/rift-svc-cli-input`
+- 推理 Kernel：`eeviriyi/rift-svc-cli-inference`
+- 模型：`ooaaqq/rift-svc-luzao-25k/rift25k.ckpt`
+
+输入 Dataset 是临时任务通道。每次提交只保留当前音频和 `job.json`，默认删除它的
+旧版本；本地原文件和已经下载的结果不受影响。
+
+## 首次检查
+
+进入 Flake 环境并确认 Kaggle 已登录：
 
 ```bash
-cd /kaggle/working
-git clone https://github.com/OWNER/RIFT-SVC.git
-cd RIFT-SVC
-python -m pip install -q -r requirements-kaggle.txt
+kaggle kernels list --mine --page-size 5
 ```
 
-`requirements-kaggle.txt` 不包含 `torch`、`torchaudio` 或 `torchcodec`，避免
-覆盖 Kaggle 已配置好的 CUDA PyTorch。
+模型仓库公开时不需要 `HF_TOKEN`。若以后改为私有仓库，再在 Kaggle Secret 中添加
+只读 `HF_TOKEN`。
 
-下载官方推理资源和模型。模型仓库可以只包含最终使用的 checkpoint，例如
-`rift25k.ckpt`；不需要上传数据或 resume checkpoint：
+Kernel 默认拉取 GitHub `master`。修改 RIFT 核心推理代码后，应先提交并推送；只修改
+本地控制脚本或 Kernel 启动代码时不受这个限制。
+
+先检查任务内容，不上传：
 
 ```bash
-python scripts/download_inference_assets.py \
-  --model-repo OWNER/rift-svc-luzao-25k \
-  --output-dir /kaggle/working/rift-assets \
-  --expected-sha256 EXPECTED_SHA256
+uv run python scripts/kaggle_rift.py vocals.wav --dry-run
 ```
 
-脚本会生成 `inference-assets.json`，并在提供 hash 时校验模型完整性。
-
-## 推理
+## 提交并下载
 
 ```bash
-python infer.py \
-  --model /kaggle/working/rift-assets/model/rift25k.ckpt \
-  --assets-dir /kaggle/working/rift-assets/pretrained \
-  --input /kaggle/input/INPUT_DATA/lead-vocal.wav \
-  --output /kaggle/working/outputs/lead-vocal__steps64-ds0.2-spk0.8-rf1.flac \
-  --speaker target \
-  --device cuda \
-  --infer-steps 64 \
-  --ds-cfg-strength 0.2 \
-  --spk-cfg-strength 0.8 \
-  --cfg-rescale 0.7 \
+uv run python scripts/kaggle_rift.py vocals.wav \
+  --output-dir /home/elvedon/Music/露早/歌曲/RIFT
+```
+
+常用参数：
+
+```bash
+uv run python scripts/kaggle_rift.py vocals.wav \
+  --output-dir ./results \
+  --steps 64 \
   --robust-f0 1 \
+  --spk 0.8 \
   --seed 7
 ```
 
-模型在一个 Notebook 进程内只加载一次；CLI 每次转换一个文件。`--seed`
-用于生成可复现的候选版本。默认 FLAC 是 24-bit PCM；继续做混音时可以将
-`.wav` 与 `--output-subtype FLOAT` 一起使用。
+输出目录包含动态命名的 Float WAV 和 `manifest.json`。清单记录输入输出 hash、
+推理参数、代码 commit、模型信息以及云端 Python、Torch、CUDA、GPU 和依赖版本。
 
-输出写入 `/kaggle/working`，下载前请确认文件非空、采样率为 44.1 kHz、
-时长符合输入。Kaggle 的工作目录是临时的，请将最终模型和结果另行保存。
+## 运行结构
+
+```text
+本地音频
+  -> 私有 Kaggle Dataset 最新版本
+  -> 私有 GPU Script Kernel
+  -> /kaggle/working/rift-output
+  -> Kaggle CLI 下载
+  -> 本地 <output-dir>/<job-id>
+```
+
+仓库、checkpoint、ContentVec、RMVPE 和 HiFi-GAN 都放在 `/kaggle/temp`，不会作为
+Kernel 输出下载。`/kaggle/working` 只保留最终 WAV 和 manifest。
+
+## 排错
+
+脚本会在 Kernel 失败或超时后自动打印日志。也可以手动检查：
+
+```bash
+kaggle kernels status eeviriyi/rift-svc-cli-inference
+kaggle kernels logs eeviriyi/rift-svc-cli-inference
+```
+
+中断本地脚本不会取消已经提交的 Kaggle 任务。任务仍可继续运行，完成后可手动取回：
+
+```bash
+kaggle kernels output eeviriyi/rift-svc-cli-inference \
+  -p ./kaggle-output -o
+```
+
+## 辅助分离 Notebook
+
+分离任务也可以完全通过 CLI 提交：
+
+```bash
+uv run python scripts/kaggle_separate.py input.wav \
+  --model anvuew-karaoke \
+  --output-dir ./results
+```
+
+支持的模型：
+
+- `anvuew-dereverb-22.5050`：Anvuew BS-RoFormer Dereverb 22.5050；
+- `anvuew-karaoke`：Anvuew Karaoke BS-RoFormer；
+- `becruily-frazer-karaoke`：Becruily & Frazer Karaoke BS-RoFormer；
+- `small-karaoke-gaboxaufr`：GaboxR67 Small Karaoke MelBand-RoFormer。
+
+每次输出两个 Float WAV stem 和 `manifest.json`，并固定 MSST commit、模型仓库
+revision、权重文件和配置文件。对应的固定私有资源是：
+
+- 输入 Dataset：`eeviriyi/rift-separation-cli-input`
+- Script Kernel：`eeviriyi/rift-separation-cli`
+
+现有 `.ipynb` 暂时保留作已验证行为参考。等新 Script Kernel 至少实际跑通 Anvuew
+Dereverb、Anvuew Karaoke 和一个 MelBand profile 后，再统一删除旧 Notebook。
