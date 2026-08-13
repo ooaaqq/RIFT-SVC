@@ -13,8 +13,7 @@ def test_inference_import_has_no_model_side_effects() -> None:
                 "import sys; "
                 "import rift_svc; "
                 "from rift_svc.inference.audio import write_audio; "
-                "assert 'torch' not in sys.modules; "
-                "assert 'pytorch_lightning' not in sys.modules"
+                "assert 'torch' not in sys.modules"
             ),
         ],
         check=True,

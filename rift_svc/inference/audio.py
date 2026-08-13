@@ -57,27 +57,6 @@ def apply_fade(audio: np.ndarray, fade_samples: int, fade_in: bool) -> np.ndarra
     return audio
 
 
-def assemble_segments(
-    segments: list[tuple[int, np.ndarray, int]],
-    total_samples: int,
-    fade_samples: int,
-) -> np.ndarray:
-    """Overlap-add converted chunks into a float32 output buffer."""
-    result = np.zeros(total_samples + max(0, fade_samples), dtype=np.float32)
-    for index, (start_sample, audio_out, expected_length) in enumerate(segments):
-        add_segment(
-            result,
-            index=index,
-            total_segments=len(segments),
-            start_sample=start_sample,
-            audio_out=audio_out,
-            expected_length=expected_length,
-            fade_samples=fade_samples,
-        )
-
-    return result[:total_samples]
-
-
 def add_segment(
     result: np.ndarray,
     *,

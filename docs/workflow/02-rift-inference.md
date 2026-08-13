@@ -17,24 +17,15 @@ seed                7
 output              44.1 kHz Float WAV
 ```
 
-示例：
+推荐通过 Kaggle CLI 生成基准版：
 
 ```bash
-python infer.py \
-  --model ckpts/rift25k.ckpt \
-  --input vocals.wav \
-  --output outputs/vocals__rift25k-k0-steps32-ds0.2-spk0.8-cfg0.7-rf0-seed7.wav \
-  --speaker target \
-  --key-shift 0 \
-  --device cuda \
-  --infer-steps 32 \
-  --ds-cfg-strength 0.2 \
-  --spk-cfg-strength 0.8 \
-  --cfg-rescale 0.7 \
-  --robust-f0 0 \
-  --output-subtype FLOAT \
-  --seed 7
+uv run python scripts/kaggle_rift.py vocals.wav \
+  --output-dir '/path/to/song/4. RIFT'
 ```
+
+本地 GPU 调试时再使用根目录 `infer.py`。两条入口采用相同默认参数，采样步数最少
+为 2。
 
 ## 局部参数矩阵
 
@@ -53,6 +44,6 @@ robust-f0 并不天然更好；若修正音高但损伤咬字，应保留基准�
 
 - 中间推理输出使用 Float WAV，避免重复量化。
 - 文件名包含 checkpoint、key、steps、CFG、robust-f0 和 seed。
-- 保存实际命令或 Notebook 参数。
+- 保存实际命令和云端 `manifest.json`。
 - 全曲基准与局部候选分开存放。
 - 不因局部问题重新替换整首人声。

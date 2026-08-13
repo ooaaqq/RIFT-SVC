@@ -1,11 +1,22 @@
 import hashlib
 from types import SimpleNamespace
 
+import pytest
 import torch
 
 from rift_svc.nsf_hifigan import vocoder as vocoder_module
 from rift_svc.rmvpe import inference as rmvpe_module
 from rift_svc.rmvpe.model import E2E0
+
+
+@pytest.mark.filterwarnings("ignore:pkg_resources is deprecated as an API")
+def test_runtime_requires_two_sampling_points() -> None:
+    from rift_svc.inference.runtime import InferenceRuntime
+
+    runtime = InferenceRuntime.__new__(InferenceRuntime)
+    runtime.spk2idx = {"target": 0}
+    with pytest.raises(ValueError, match="at least 2"):
+        runtime.convert("unused.wav", speaker="target", infer_steps=1)
 
 
 def test_rmvpe_checkpoint_structure_is_stable():

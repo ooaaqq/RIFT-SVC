@@ -26,10 +26,10 @@ from rift_svc.inference.pitch import (
     get_f0_pw,
     post_process_f0,
 )
+from rift_svc.inference.slicer import Slicer
 from rift_svc.nsf_hifigan import NsfHifiGAN
 from rift_svc.rf import RF
 from rift_svc.rmvpe import RMVPE
-from slicer import Slicer
 
 
 def extract_state_dict(ckpt):
@@ -427,8 +427,8 @@ class InferenceRuntime:
         if speaker not in self.spk2idx:
             valid = ", ".join(self.spk2idx)
             raise ValueError(f"unknown speaker {speaker!r}; valid speakers: {valid}")
-        if infer_steps < 1:
-            raise ValueError("infer_steps must be at least 1")
+        if infer_steps < 2:
+            raise ValueError("infer_steps must be at least 2")
         if robust_f0 not in (0, 1, 2):
             raise ValueError("robust_f0 must be 0, 1, or 2")
         if fade_duration_ms < 0:

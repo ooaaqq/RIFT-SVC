@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from slicer import Slicer
+from rift_svc.inference.slicer import Slicer
 
 
 def make_slicer() -> Slicer:

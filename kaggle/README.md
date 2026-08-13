@@ -1,7 +1,6 @@
 # Kaggle CLI 推理
 
-这套流程用于从本地提交一条音频到 Kaggle GPU，并在完成后自动下载结果，不需要
-打开 Notebook 页面。
+这套流程从本地提交音频到 Kaggle T4，并自动下载和校验结果，不需要打开网页。
 
 ## 固定资源
 
@@ -27,6 +26,9 @@ kaggle kernels list --mine --page-size 5
 
 Kernel 默认拉取 GitHub `master`。修改 RIFT 核心推理代码后，应先提交并推送；只修改
 本地控制脚本或 Kernel 启动代码时不受这个限制。
+
+本地脚本每次提交时会动态生成 Kernel metadata，并显式指定
+`--accelerator NvidiaTeslaT4`。仓库不保留容易与实际资源漂移的静态 metadata。
 
 先检查任务内容，不上传：
 
@@ -73,6 +75,9 @@ Kernel 输出下载。`/kaggle/working` 只保留最终 WAV 和 manifest。
 `NvidiaTeslaT4`），并沿用 Kaggle 预装的 CUDA PyTorch。当前推理只使用其中一张
 T4，不为 P100 降级或重装 PyTorch。
 
+RIFT 和分离各自共享一组临时 Dataset/Kernel。同一类型任务必须顺序提交，不能并发，
+否则后一次任务会覆盖前一次的输入版本。
+
 ## 排错
 
 脚本会在 Kernel 失败或超时后自动打印日志。也可以手动检查：
@@ -89,7 +94,7 @@ kaggle kernels output eeviriyi/rift-svc-cli-inference \
   -p ./kaggle-output -o
 ```
 
-## 辅助分离
+## 分离模型
 
 分离任务也可以完全通过 CLI 提交：
 
@@ -112,5 +117,5 @@ revision、权重文件和配置文件。对应的固定私有资源是：
 - 输入 Dataset：`eeviriyi/rift-separation-cli-input`
 - Script Kernel：`eeviriyi/rift-separation-cli`
 
-RIFT 与以上四个分离 profile 均已通过 T4 Script Kernel 的真实端到端验证。旧
-Notebook 已删除，后续只维护本地 CLI 与两个 Script Kernel。
+RIFT 与以上四个 profile 均已通过 T4 Script Kernel 的真实端到端验证。后续只维护
+本地 CLI 与两个 Script Kernel。

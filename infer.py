@@ -19,7 +19,7 @@ from rift_svc.inference.runtime import InferenceRuntime
 @click.option("--assets-dir", type=click.Path(file_okay=False, path_type=Path))
 @click.option("--key-shift", type=int, default=0, show_default=True)
 @click.option("--device", default=None)
-@click.option("--infer-steps", type=click.IntRange(min=1), default=32, show_default=True)
+@click.option("--infer-steps", type=click.IntRange(min=2), default=32, show_default=True)
 @click.option("--ds-cfg-strength", type=float, default=0.2, show_default=True)
 @click.option("--spk-cfg-strength", type=float, default=0.8, show_default=True)
 @click.option("--cfg-rescale", type=float, default=0.7, show_default=True)

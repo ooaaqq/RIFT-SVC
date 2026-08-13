@@ -48,3 +48,21 @@ Karaoke、去混响和其他模型用于诊断或局部修复，不是固定前�
 
 所有候选先截取同一时间窗、统一试听响度并独奏辨认。正式使用时回到原始、
 未归一化的完整轨。
+
+## 云端辅助模型
+
+仓库提供以下辅助分离 profile：
+
+```bash
+uv run python scripts/kaggle_separate.py input.wav \
+  --model anvuew-karaoke \
+  --output-dir '/path/to/song/3. Auxiliary'
+```
+
+- `anvuew-dereverb-22.5050`：去混响；
+- `anvuew-karaoke`：去和声；
+- `becruily-frazer-karaoke`：另一组去和声候选；
+- `small-karaoke-gaboxaufr`：MelBand-RoFormer 去和声候选。
+
+BS-RoFormer 124 bands 基准分离目前不是本仓库自动任务的一部分，应把其来源和参数
+记录在歌曲 `SOURCES.md` 中。
