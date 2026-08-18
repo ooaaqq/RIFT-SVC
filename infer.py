@@ -34,12 +34,13 @@ from rift_svc.inference.runtime import InferenceRuntime
 @click.option("--slicer-hop-size", type=click.IntRange(min=1), default=10, show_default=True)
 @click.option("--slicer-max-sil-kept", type=click.IntRange(min=1), default=200, show_default=True)
 @click.option("--use-fp16/--no-use-fp16", default=True)
-@click.option("--seed", type=int, default=None)
+@click.option("--seed", type=int, default=7, show_default=True)
 @click.option(
     "--output-subtype",
     type=click.Choice(["PCM_24", "FLOAT", "PCM_16"], case_sensitive=True),
-    default=None,
-    help="SoundFile subtype; defaults to PCM_24.",
+    default="FLOAT",
+    show_default=True,
+    help="SoundFile subtype for the intermediate inference output.",
 )
 def main(
     model,

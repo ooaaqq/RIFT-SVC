@@ -13,21 +13,40 @@ from pathlib import Path
 from scripts.kaggle_common import (
     AUDIO_EXTENSIONS,
     current_datasets,
+    exclusive_kaggle_channel,
+    frame_delta,
     probe_audio,
+    publish_directory_atomic,
     run,
     safe_audio_name,
     sha256,
     wait_for_dataset,
     wait_for_kernel,
 )
-from scripts.separation_profiles import PROFILES
+from scripts.separation_profiles import MSST_COMMIT, MSST_REPO, PROFILES
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 KERNEL_SOURCE = REPO_ROOT / "kaggle/separation/kernel.py"
+KERNEL_MARKERS = {
+    'MSST_REPO = "__MSST_REPO__"': f"MSST_REPO = {MSST_REPO!r}",
+    'MSST_COMMIT = "__MSST_COMMIT__"': f"MSST_COMMIT = {MSST_COMMIT!r}",
+    'PROFILES = "__SEPARATION_PROFILES__"': f"PROFILES = {PROFILES!r}",
+}
 DEFAULT_OWNER = "eeviriyi"
 DEFAULT_DATASET_SLUG = "rift-separation-cli-input"
 DEFAULT_KERNEL_SLUG = "rift-separation-cli"
 DEFAULT_ACCELERATOR = "NvidiaTeslaT4"
+
+
+def render_kernel() -> str:
+    kernel = KERNEL_SOURCE.read_text(encoding="utf-8")
+    for marker, replacement in KERNEL_MARKERS.items():
+        if kernel.count(marker) != 1:
+            raise RuntimeError(
+                f"separation kernel marker is missing or ambiguous: {marker}"
+            )
+        kernel = kernel.replace(marker, replacement)
+    return kernel
 
 
 def parse_args() -> argparse.Namespace:
@@ -65,8 +84,7 @@ def build_job(args: argparse.Namespace, input_path: Path) -> dict:
     return {
         "schema_version": 1,
         "job_id": (
-            f"{now.strftime('%Y%m%dT%H%M%SZ')}-{args.model}-"
-            f"{sha256(input_path)[:8]}"
+            f"{now.strftime('%Y%m%dT%H%M%SZ')}-{args.model}-{sha256(input_path)[:8]}"
         ),
         "submitted_at": now.isoformat(),
         "input_name": safe_audio_name(input_path),
@@ -92,18 +110,19 @@ def validate_outputs(job: dict, download_dir: Path) -> tuple[list[Path], Path]:
     )
     if len(outputs) != 2 or len(expected) != 2:
         raise RuntimeError(f"expected two output stems, found {outputs}")
-    input_duration = float(job["input_audio"]["duration"])
     for path in outputs:
         if sha256(path) != expected[path.name]["sha256"]:
             raise RuntimeError(f"output SHA-256 mismatch: {path}")
         probe = probe_audio(path)
-        if abs(float(probe["duration"]) - input_duration) > 0.1:
-            raise RuntimeError(f"output duration differs from input: {path}")
+        delta = frame_delta(job["input_audio"], probe)
+        if abs(delta) > 2:
+            raise RuntimeError(
+                f"output frame count differs from input: {path}; delta={delta}"
+            )
     return outputs, manifests[0]
 
 
-def main() -> None:
-    args = parse_args()
+def run_job(args: argparse.Namespace) -> None:
     input_path = args.input.expanduser().resolve()
     if not input_path.is_file():
         raise SystemExit(f"input does not exist: {input_path}")
@@ -171,7 +190,7 @@ def main() -> None:
             min(args.timeout, 30 * 60),
         )
 
-        shutil.copy2(KERNEL_SOURCE, kernel_dir / "kernel.py")
+        (kernel_dir / "kernel.py").write_text(render_kernel(), encoding="utf-8")
         (kernel_dir / "kernel-metadata.json").write_text(
             json.dumps(
                 {
@@ -211,11 +230,22 @@ def main() -> None:
 
         outputs, manifest = validate_outputs(job, download_dir)
         destination = args.output_dir.expanduser().resolve() / job["job_id"]
-        destination.mkdir(parents=True, exist_ok=False)
-        for output in outputs:
-            shutil.copy2(output, destination / output.name)
-        shutil.copy2(manifest, destination / "manifest.json")
+        publish_directory_atomic(
+            destination,
+            [(output, Path(output.name)) for output in outputs]
+            + [(manifest, Path("manifest.json"))],
+        )
         print(f"Downloaded {len(outputs)} stems to: {destination}")
+
+
+def main() -> None:
+    args = parse_args()
+    if args.dry_run:
+        run_job(args)
+        return
+    channel = f"{args.owner}/{args.dataset_slug}|{args.owner}/{args.kernel_slug}"
+    with exclusive_kaggle_channel(channel):
+        run_job(args)
 
 
 if __name__ == "__main__":

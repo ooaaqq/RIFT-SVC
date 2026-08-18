@@ -1,102 +1,59 @@
-# Kaggle CLI 推理
+# Kaggle CLI inference
 
-这套流程从本地提交音频到 Kaggle T4，并自动下载和校验结果，不需要打开网页。
-
-## 固定资源
-
-默认使用以下私有 Kaggle 资源：
-
-- 输入 Dataset：`eeviriyi/rift-svc-cli-input`
-- 推理 Kernel：`eeviriyi/rift-svc-cli-inference`
-- 模型：`ooaaqq/rift-svc-luzao-25k/rift25k.ckpt`
-
-输入 Dataset 是临时任务通道。每次提交只保留当前音频和 `job.json`，默认删除它的
-旧版本；本地原文件和已经下载的结果不受影响。
-
-## 首次检查
-
-进入 Flake 环境并确认 Kaggle 已登录：
-
-```bash
-kaggle kernels list --mine --page-size 5
-```
-
-模型仓库公开时不需要 `HF_TOKEN`。若以后改为私有仓库，再在 Kaggle Secret 中添加
-只读 `HF_TOKEN`。
-
-Kernel 默认拉取 GitHub `master`。修改 RIFT 核心推理代码后，应先提交并推送；只修改
-本地控制脚本或 Kernel 启动代码时不受这个限制。
-
-本地脚本每次提交时会动态生成 Kernel metadata，并显式指定
-`--accelerator NvidiaTeslaT4`。仓库不保留容易与实际资源漂移的静态 metadata。
-
-先检查任务内容，不上传：
-
-```bash
-uv run python scripts/kaggle_rift.py vocals.wav --dry-run
-```
-
-## 提交并下载
-
-```bash
-uv run python scripts/kaggle_rift.py vocals.wav \
-  --output-dir /home/elvedon/Music/露早/歌曲/RIFT
-```
-
-常用参数：
-
-```bash
-uv run python scripts/kaggle_rift.py vocals.wav \
-  --output-dir ./results \
-  --steps 64 \
-  --robust-f0 1 \
-  --spk 0.8 \
-  --seed 7
-```
-
-输出目录包含动态命名的 Float WAV 和 `manifest.json`。清单记录输入输出 hash、
-推理参数、代码 commit、模型信息以及云端 Python、Torch、CUDA、GPU 和依赖版本。
-
-## 运行结构
+本地脚本负责上传、提交、等待、下载和校验，不需要打开 Kaggle 网页。计算单位是：
 
 ```text
-本地音频
-  -> 私有 Kaggle Dataset 最新版本
-  -> 私有 GPU Script Kernel
-  -> /kaggle/working/rift-output
-  -> Kaggle CLI 下载
-  -> 本地 <output-dir>/<job-id>
+一个模型 + 一组参数 + 多条输入 = 一个 Batch Run
 ```
 
-仓库、checkpoint、ContentVec、RMVPE 和 HiFi-GAN 都放在 `/kaggle/temp`，不会作为
-Kernel 输出下载。`/kaggle/working` 只保留最终 WAV 和 manifest。
+## RIFT dual-T4 batch
 
-两类 Script Kernel 都固定使用网页中的 `GPU T4 ×2`（API 名称
-`NvidiaTeslaT4`），并沿用 Kaggle 预装的 CUDA PyTorch。当前推理只使用其中一张
-T4，不为 P100 降级或重装 PyTorch。
+默认资源：
 
-RIFT 和分离各自共享一组临时 Dataset/Kernel。同一类型任务必须顺序提交，不能并发，
-否则后一次任务会覆盖前一次的输入版本。
+- Dataset：`eeviriyi/rift-svc-cli-input`
+- Kernel：`eeviriyi/rift-svc-cli-inference`
+- 模型：`ooaaqq/rift-svc-luzao-25k/rift25k.ckpt`
 
-## 排错
-
-脚本会在 Kernel 失败或超时后自动打印日志。也可以手动检查：
+一次提交多条准备好的人声：
 
 ```bash
-kaggle kernels status eeviriyi/rift-svc-cli-inference
-kaggle kernels logs eeviriyi/rift-svc-cli-inference
+uv run python scripts/kaggle_rift.py \
+  '/path/歌名A-歌手A-bs124-vocal-l1.wav' \
+  '/path/歌名B-歌手B-bs124-vocal-l1.wav' \
+  '/path/歌名C-歌手C-bs124-vocal-l1-anvuew-karaoke-lead.wav' \
+  --output-dir '/path/to/song/20. AI'
 ```
 
-中断本地脚本不会取消已经提交的 Kaggle 任务。任务仍可继续运行，完成后可手动取回：
+先生成批次计划而不上传：
 
 ```bash
-kaggle kernels output eeviriyi/rift-svc-cli-inference \
-  -p ./kaggle-output -o
+uv run python scripts/kaggle_rift.py vocal-a.wav vocal-b.wav --dry-run
 ```
 
-## 分离模型
+Kaggle 的两张 T4 各启动一个常驻 worker，分别绑定 `cuda:0`、`cuda:1`。两个 worker
+从动态队列领取文件，每张卡只加载一次 RIFT、RMVPE、ContentVec 和 vocoder。只有一条
+输入时只启动一个 worker；不会为了占用第二张卡切割单首音频。
 
-分离任务也可以完全通过 CLI 提交：
+一个批次的全部输出会先下载到隐藏临时目录，校验并复制完成后再整体发布为参数目录：
+
+```text
+RIFT25K-k0-s32-ds0p2-spk0p8-cfg0p7-rf0-seed7/
+```
+
+输入文件名中的处理链保持不变，只追加 `rift25k`。例如：
+
+```text
+歌名-歌手-bs124-vocal-l1-rift25k.wav
+歌名-歌手-bs124-vocal-l1-anvuew-karaoke-lead-rift25k.wav
+```
+
+云端 manifest 用于验证批次 ID、输出数量、SHA-256、采样帧、采样率和声道；验证成功
+后本地工作区只保留普通 Float WAV。输出相对输入重采样后的长度默认最多只容许 2 个
+采样点误差。参数目录已存在时整批拒绝，因此同一 Run 的输入应一次批量提交。
+
+## Public separation models
+
+公开去和声和去混响模型通过独立 Kernel 提交：
 
 ```bash
 uv run python scripts/kaggle_separate.py input.wav \
@@ -104,18 +61,33 @@ uv run python scripts/kaggle_separate.py input.wav \
   --output-dir ./results
 ```
 
-支持的模型：
+当前 profiles：
 
-- `anvuew-dereverb-22.5050`：Anvuew BS-RoFormer Dereverb 22.5050；
-- `anvuew-karaoke`：Anvuew Karaoke BS-RoFormer；
-- `becruily-frazer-karaoke`：Becruily & Frazer Karaoke BS-RoFormer；
-- `small-karaoke-gaboxaufr`：GaboxR67 Small Karaoke MelBand-RoFormer。
+- `anvuew-dereverb-22.5050`
+- `anvuew-karaoke`
+- `becruily-frazer-karaoke`
+- `small-karaoke-gaboxaufr`
 
-每次输出两个 Float WAV stem 和 `manifest.json`，并固定 MSST commit、模型仓库
-revision、权重文件和配置文件。对应的固定私有资源是：
+它们是歌曲按需选择的独立模型，不属于 MVSEP 的固定后处理阶段。
 
-- 输入 Dataset：`eeviriyi/rift-separation-cli-input`
-- Script Kernel：`eeviriyi/rift-separation-cli`
+## Resource lifecycle
 
-RIFT 与以上四个 profile 均已通过 T4 Script Kernel 的真实端到端验证。后续只维护
-本地 CLI 与两个 Script Kernel。
+输入 Dataset 是当前任务的临时通道，默认删除旧版本；本地原文件与已下载结果不受
+影响。默认 Git、checkpoint 仓库和 ContentVec/RMVPE/vocoder modules 都固定为确切
+revision；修改核心推理代码或模型资产后要先提交并推送，再显式更新固定 revision。
+只修改本地提交器或上传的 Kernel 文件不受此限制。
+
+RIFT 和公开分离各自共享一组 Dataset/Kernel。本机启动第二个占用相同远端通道的任务
+会立即拒绝；锁覆盖上传、运行、下载和原子发布全过程。不同机器仍不能同时操作同一组
+Dataset/Kernel。
+
+## Troubleshooting
+
+```bash
+kaggle kernels status eeviriyi/rift-svc-cli-inference
+kaggle kernels logs eeviriyi/rift-svc-cli-inference
+kaggle kernels output eeviriyi/rift-svc-cli-inference \
+  -p ./kaggle-output -o
+```
+
+中断本地脚本不会取消已经提交的 Kaggle Batch Run。

@@ -1,25 +1,34 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
-import importlib.util
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from scripts.kaggle_separate import DEFAULT_ACCELERATOR, build_job
-from scripts.separation_profiles import PROFILES
+from scripts.kaggle_separate import DEFAULT_ACCELERATOR, build_job, render_kernel
+from scripts.separation_profiles import MSST_COMMIT, MSST_REPO, PROFILES
 
 
 def test_cloud_kernel_profiles_match_local_cli() -> None:
-    kernel_path = Path(__file__).parents[1] / "kaggle/separation/kernel.py"
-    spec = importlib.util.spec_from_file_location("separation_kernel", kernel_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    rendered = render_kernel()
+    assignments = {}
+    for node in ast.parse(rendered).body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if isinstance(target, ast.Name) and target.id in {
+                "PROFILES",
+                "MSST_REPO",
+                "MSST_COMMIT",
+            }:
+                assignments[target.id] = ast.literal_eval(node.value)
 
-    assert module.PROFILES == PROFILES
+    assert "__SEPARATION_PROFILES__" not in rendered
+    assert assignments["PROFILES"] == PROFILES
+    assert assignments["MSST_REPO"] == MSST_REPO
+    assert assignments["MSST_COMMIT"] == MSST_COMMIT
 
 
 def test_cloud_jobs_use_kaggle_t4() -> None:

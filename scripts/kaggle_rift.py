@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Submit one RIFT-SVC inference job to Kaggle and download its output."""
+"""Submit one multi-file RIFT-SVC batch to a dual-T4 Kaggle kernel."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import tempfile
@@ -13,9 +14,11 @@ from pathlib import Path
 from scripts.kaggle_common import (
     AUDIO_EXTENSIONS,
     current_datasets,
+    exclusive_kaggle_channel,
+    frame_delta,
     probe_audio,
+    publish_directory_atomic,
     run,
-    safe_audio_name,
     sha256,
     wait_for_dataset,
     wait_for_kernel,
@@ -23,12 +26,17 @@ from scripts.kaggle_common import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 KERNEL_SOURCE = REPO_ROOT / "kaggle/rift/kernel.py"
+KERNEL_WORKER_SOURCE = REPO_ROOT / "kaggle/rift/batch_worker.py"
+WORKER_MARKER = 'BATCH_WORKER_SOURCE = "__BATCH_WORKER_SOURCE__"'
 DEFAULT_OWNER = "eeviriyi"
 DEFAULT_DATASET_SLUG = "rift-svc-cli-input"
 DEFAULT_KERNEL_SLUG = "rift-svc-cli-inference"
 DEFAULT_ACCELERATOR = "NvidiaTeslaT4"
 DEFAULT_REPO_URL = "https://github.com/ooaaqq/RIFT-SVC.git"
+DEFAULT_REPO_REF = "4536e77f9d05759e3ea6054d72848a2dbd97b4d3"
 DEFAULT_MODEL_REPO = "ooaaqq/rift-svc-luzao-25k"
+DEFAULT_MODEL_REVISION = "020cacf61bc073b33a5e0ea1c20a909ec96c8545"
+DEFAULT_MODULES_REVISION = "03c1662ba24a76fa3a653c33bc983ce6422620b4"
 DEFAULT_MODEL_SHA256 = (
     "3db77a14098d87359dd69156973e2e315c642da8df17de1686831c91faed0c86"
 )
@@ -38,22 +46,41 @@ def name_value(value: object) -> str:
     return str(value).replace("-", "m").replace(".", "p")
 
 
+def build_run_name(args: argparse.Namespace) -> str:
+    return (
+        f"RIFT25K-k{name_value(args.key_shift)}-s{args.steps}"
+        f"-ds{name_value(args.ds)}-spk{name_value(args.spk)}"
+        f"-cfg{name_value(args.cfg_rescale)}-rf{args.robust_f0}-seed{args.seed}"
+    )
+
+
+def render_kernel() -> str:
+    kernel = KERNEL_SOURCE.read_text(encoding="utf-8")
+    if kernel.count(WORKER_MARKER) != 1:
+        raise RuntimeError("RIFT kernel worker marker is missing or ambiguous")
+    worker = KERNEL_WORKER_SOURCE.read_text(encoding="utf-8")
+    return kernel.replace(WORKER_MARKER, f"BATCH_WORKER_SOURCE = {worker!r}")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Upload audio, run the private Kaggle RIFT kernel, and download Float WAV output."
+        description=(
+            "Upload multiple vocals, load RIFT once per available T4, and download "
+            "one validated Float WAV for every input."
+        )
     )
-    parser.add_argument("input", type=Path)
+    parser.add_argument("inputs", type=Path, nargs="+")
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/kaggle"))
     parser.add_argument("--owner", default=DEFAULT_OWNER)
     parser.add_argument("--dataset-slug", default=DEFAULT_DATASET_SLUG)
     parser.add_argument("--kernel-slug", default=DEFAULT_KERNEL_SLUG)
     parser.add_argument("--repo-url", default=DEFAULT_REPO_URL)
-    parser.add_argument("--repo-ref", default="master")
+    parser.add_argument("--repo-ref", default=DEFAULT_REPO_REF)
     parser.add_argument("--model-repo", default=DEFAULT_MODEL_REPO)
     parser.add_argument("--model-filename", default="rift25k.ckpt")
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
-    parser.add_argument("--model-revision")
-    parser.add_argument("--modules-revision")
+    parser.add_argument("--model-revision", default=DEFAULT_MODEL_REVISION)
+    parser.add_argument("--modules-revision", default=DEFAULT_MODULES_REVISION)
     parser.add_argument("--speaker", default="target")
     parser.add_argument("--key-shift", type=int, default=0)
     parser.add_argument("--steps", type=int, default=32)
@@ -72,7 +99,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="prepare and print the job without uploading or running it",
+        help="prepare and print the batch without uploading or running it",
     )
     args = parser.parse_args()
     if args.steps < 2:
@@ -84,25 +111,43 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def build_job(args: argparse.Namespace, input_path: Path) -> dict:
-    suffix = (
-        f"rift25k-spk-{args.speaker}-k{name_value(args.key_shift)}"
-        f"-steps{args.steps}-ds{name_value(args.ds)}-spk{name_value(args.spk)}"
-        f"-cfg{name_value(args.cfg_rescale)}-rf{args.robust_f0}-seed{args.seed}"
-    )
-    safe_name = safe_audio_name(input_path)
-    output_name = f"{Path(safe_name).stem}__{suffix}.wav"
+def build_job(args: argparse.Namespace, input_paths: list[Path]) -> dict:
+    if not input_paths:
+        raise ValueError("at least one input is required")
+    items = []
+    output_names: set[str] = set()
+    input_digests = []
+    for index, input_path in enumerate(input_paths, start=1):
+        input_path = input_path.expanduser().resolve()
+        if not input_path.is_file():
+            raise FileNotFoundError(input_path)
+        if input_path.suffix.lower() not in AUDIO_EXTENSIONS:
+            raise ValueError(f"unsupported audio extension: {input_path.suffix}")
+        digest = sha256(input_path)
+        output_name = f"{input_path.stem}-rift25k.wav"
+        if output_name in output_names:
+            raise ValueError(f"duplicate batch output name: {output_name}")
+        output_names.add(output_name)
+        input_digests.append(digest)
+        items.append(
+            {
+                "index": index,
+                "input_name": f"input-{index:04d}{input_path.suffix.lower()}",
+                "source_input_name": input_path.name,
+                "input_sha256": digest,
+                "input_audio": probe_audio(input_path),
+                "transport_output_name": f"output-{index:04d}.wav",
+                "output_name": output_name,
+            }
+        )
     now = datetime.now(UTC)
-    input_probe = probe_audio(input_path)
+    batch_digest = hashlib.sha256("\0".join(input_digests).encode()).hexdigest()[:8]
     return {
-        "schema_version": 1,
-        "job_id": f"{now.strftime('%Y%m%dT%H%M%SZ')}-{sha256(input_path)[:8]}",
+        "schema_version": 2,
+        "job_id": f"{now.strftime('%Y%m%dT%H%M%SZ')}-batch-{batch_digest}",
         "submitted_at": now.isoformat(),
-        "input_name": safe_name,
-        "source_input_name": input_path.name,
-        "input_sha256": sha256(input_path),
-        "input_audio": input_probe,
-        "output_name": output_name,
+        "run_name": build_run_name(args),
+        "items": items,
         "repo_url": args.repo_url,
         "repo_ref": args.repo_ref,
         "model_repo": args.model_repo,
@@ -123,25 +168,61 @@ def build_job(args: argparse.Namespace, input_path: Path) -> dict:
     }
 
 
-def main() -> None:
-    args = parse_args()
-    input_path = args.input.expanduser().resolve()
-    if not input_path.is_file():
-        raise SystemExit(f"input does not exist: {input_path}")
-    if input_path.suffix.lower() not in AUDIO_EXTENSIONS:
-        raise SystemExit(f"unsupported audio extension: {input_path.suffix}")
+def validate_outputs(job: dict, download_dir: Path) -> list[tuple[Path, dict]]:
+    manifests = sorted(download_dir.rglob("manifest.json"))
+    if len(manifests) != 1:
+        raise RuntimeError(f"expected one manifest, found {manifests}")
+    manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+    if manifest.get("job_id") != job["job_id"]:
+        raise RuntimeError("downloaded output belongs to a different Kaggle batch")
+    records = {
+        item["transport_output_name"]: item for item in manifest.get("outputs", [])
+    }
+    if len(records) != len(job["items"]):
+        raise RuntimeError(
+            f"expected {len(job['items'])} output records, found {len(records)}"
+        )
+    validated = []
+    for item in job["items"]:
+        transport_name = item["transport_output_name"]
+        record = records.get(transport_name)
+        matches = sorted(download_dir.rglob(transport_name))
+        if record is None or len(matches) != 1:
+            raise RuntimeError(f"missing unique output for {transport_name}: {matches}")
+        output = matches[0]
+        if sha256(output) != record.get("sha256"):
+            raise RuntimeError(f"downloaded output SHA-256 mismatch: {output}")
+        probe = probe_audio(output)
+        if int(probe["sample_rate"]) != 44100 or int(probe["channels"]) != 1:
+            raise RuntimeError(f"unexpected downloaded audio: {probe}")
+        delta = frame_delta(item["input_audio"], probe)
+        if abs(delta) > 2:
+            raise RuntimeError(
+                "downloaded audio frame count differs from input after resampling: "
+                f"delta={delta} frames at {probe['sample_rate']} Hz"
+            )
+        validated.append((output, item))
+    return validated
+
+
+def run_job(args: argparse.Namespace) -> None:
+    input_paths = [path.expanduser().resolve() for path in args.inputs]
     if shutil.which("kaggle") is None or shutil.which("ffprobe") is None:
         raise SystemExit(
             "kaggle and ffprobe must be available; enter the Flake environment"
         )
 
-    job = build_job(args, input_path)
+    job = build_job(args, input_paths)
     dataset_ref = f"{args.owner}/{args.dataset_slug}"
     kernel_ref = f"{args.owner}/{args.kernel_slug}"
     print(json.dumps(job, ensure_ascii=False, indent=2), flush=True)
     if args.dry_run:
         print("Dry run: no Kaggle dataset or kernel was changed.")
         return
+
+    destination = args.output_dir.expanduser().resolve() / job["run_name"]
+    if destination.exists() or destination.is_symlink():
+        raise FileExistsError(f"refusing to overwrite existing Run: {destination}")
 
     with tempfile.TemporaryDirectory(prefix="rift-kaggle-") as temporary:
         root = Path(temporary)
@@ -152,7 +233,8 @@ def main() -> None:
         kernel_dir.mkdir()
         download_dir.mkdir()
 
-        shutil.copy2(input_path, dataset_dir / job["input_name"])
+        for source, item in zip(input_paths, job["items"], strict=True):
+            shutil.copy2(source, dataset_dir / item["input_name"])
         (dataset_dir / "job.json").write_text(
             json.dumps(job, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
@@ -163,8 +245,8 @@ def main() -> None:
                     "title": "RIFT SVC CLI Input",
                     "id": dataset_ref,
                     "licenses": [{"name": "other"}],
-                    "subtitle": "Transient private input for automated RIFT inference",
-                    "description": "Managed by scripts/kaggle_rift.py; contains only the current inference job.",
+                    "subtitle": "Transient private input for one RIFT batch",
+                    "description": "Managed by scripts/kaggle_rift.py; contains only the current batch.",
                 },
                 indent=2,
             )
@@ -187,13 +269,10 @@ def main() -> None:
             run(dataset_command)
         else:
             run(["kaggle", "datasets", "create", "-p", str(dataset_dir)])
-        wait_for_dataset(
-            dataset_ref,
-            {job["input_name"], "job.json"},
-            min(args.timeout, 30 * 60),
-        )
+        expected_files = {"job.json"} | {item["input_name"] for item in job["items"]}
+        wait_for_dataset(dataset_ref, expected_files, min(args.timeout, 30 * 60))
 
-        shutil.copy2(KERNEL_SOURCE, kernel_dir / "kernel.py")
+        (kernel_dir / "kernel.py").write_text(render_kernel(), encoding="utf-8")
         (kernel_dir / "kernel-metadata.json").write_text(
             json.dumps(
                 {
@@ -231,40 +310,30 @@ def main() -> None:
         wait_for_kernel(kernel_ref, args.poll_interval, args.timeout)
         run(["kaggle", "kernels", "output", kernel_ref, "-p", str(download_dir), "-o"])
 
-        manifests = sorted(download_dir.rglob("manifest.json"))
-        outputs = sorted(download_dir.rglob(job["output_name"]))
-        if len(manifests) != 1 or len(outputs) != 1:
-            raise RuntimeError(
-                f"expected one manifest and output; found manifests={manifests}, outputs={outputs}"
-            )
-        manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
-        if manifest.get("job_id") != job["job_id"]:
-            raise RuntimeError("downloaded output belongs to a different Kaggle job")
-        if sha256(outputs[0]) != manifest.get("output_sha256"):
-            raise RuntimeError("downloaded output SHA-256 mismatch")
-        probe = probe_audio(outputs[0])
-        if int(probe["sample_rate"]) != 44100 or int(probe["channels"]) != 1:
-            raise RuntimeError(f"unexpected downloaded audio: {probe}")
-        input_duration = float(job["input_audio"]["duration"])
-        output_duration = float(probe["duration"])
-        if abs(input_duration - output_duration) > 0.1:
-            raise RuntimeError(
-                "downloaded audio duration differs from input: "
-                f"input={input_duration:.3f}s output={output_duration:.3f}s"
-            )
+        validated = validate_outputs(job, download_dir)
+        targets = publish_directory_atomic(
+            destination,
+            [(output, Path(item["output_name"])) for output, item in validated],
+        )
+        for target in targets:
+            print(f"Downloaded audio: {target}")
+        print(f"Validated {len(validated)} outputs from one batch into: {destination}")
 
-        destination = args.output_dir.expanduser().resolve() / job["job_id"]
-        destination.mkdir(parents=True, exist_ok=False)
-        final_audio = destination / outputs[0].name
-        final_manifest = destination / "manifest.json"
-        shutil.copy2(outputs[0], final_audio)
-        shutil.copy2(manifests[0], final_manifest)
-        print(f"Downloaded audio: {final_audio}")
-        print(f"Run manifest: {final_manifest}")
+
+def main() -> None:
+    args = parse_args()
+    if args.dry_run:
+        run_job(args)
+        return
+    channel = f"{args.owner}/{args.dataset_slug}|{args.owner}/{args.kernel_slug}"
+    with exclusive_kaggle_channel(channel):
+        run_job(args)
 
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        raise SystemExit("Interrupted; the Kaggle job may still be running.") from None
+        raise SystemExit(
+            "Interrupted; the Kaggle batch may still be running."
+        ) from None

@@ -16,6 +16,7 @@ MODULE_PATTERNS = [
     "rmvpe/**",
     "nsf_hifigan_44.1k_hop512_128bin_2024.02/**",
 ]
+DEFAULT_MODULES_REVISION = "03c1662ba24a76fa3a653c33bc983ce6422620b4"
 
 
 def sha256(path: Path) -> str:
@@ -36,7 +37,7 @@ def parse_args() -> argparse.Namespace:
         default="Pur1zumu/RIFT-SVC-modules",
         help="HF repository containing the official inference modules",
     )
-    parser.add_argument("--modules-revision")
+    parser.add_argument("--modules-revision", default=DEFAULT_MODULES_REVISION)
     parser.add_argument("--output-dir", type=Path, default=Path("models"))
     parser.add_argument("--expected-sha256")
     parser.add_argument(

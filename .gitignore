@@ -30,3 +30,6 @@ ckpts/*
 *.mp4
 *.mov
 *.mkv
+
+# Private impulse-response libraries live in the human workspace, never Git.
+assets/ir/

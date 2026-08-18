@@ -14,15 +14,24 @@
 ```text
 infer.py                    本地单文件推理入口
 rift_svc/                   RIFT、RMVPE、HiFi-GAN 与推理运行时
+rift_svc/audio_tools.py     制作脚本共享的音频 I/O、时间与原子写入
+rift_svc/alignment.py       对齐检测、稳健拟合与保音高渲染核心
+rift_svc/mixctl.py          歌曲书架、原子版本与交付检查工具
 scripts/kaggle_rift.py      本地提交 RIFT 云端任务
 scripts/kaggle_separate.py  本地提交 BS/MelBand-RoFormer 任务
 kaggle/rift/kernel.py       Kaggle RIFT Script Kernel
 kaggle/separation/kernel.py Kaggle 分离 Script Kernel
-docs/workflow/              通用歌曲制作流程与歌曲文档模板
+scripts/render_m7_returns.py 通用 M7 true-stereo IR 返回渲染
+scripts/apply_breath_control.py 局部漏气高频动态压制
+scripts/align_audio.py       对齐锚点检查与保音高分段校正
+scripts/apply_gain_automation.py 人写时间区间的平滑音量自动化
+scripts/analyze_reference_energy.py 只读原曲慢速能量分析
+docs/workflow/README.md     唯一的歌曲制作工作流
 tests/                      推理行为和云端提交器的轻量测试
 ```
 
-checkpoint、辅助模型、输入音频和输出文件均不进入 Git。
+模型 checkpoint、辅助模型、IR、输入音频和成品输出都不进入 Git。M7 等共享制作
+素材保存在 `/home/elvedon/Music/露早/90. Shared Resources/`。
 
 ## 环境
 
@@ -43,12 +52,15 @@ uv sync --extra dev
 Flake 提供 Python 3.11、FFmpeg、Kaggle CLI、uv、Ruff 和编译依赖；uv 只管理
 Python 包。
 
+本地与 Kaggle RIFT 默认都使用 `seed=7`，中间输出均为 44.1 kHz mono Float WAV；
+PCM24 只在后续交付量化时使用。
+
 ## 日常使用
 
-RIFT 云端推理：
+RIFT 云端批量推理：
 
 ```bash
-uv run python scripts/kaggle_rift.py vocals.wav \
+uv run python scripts/kaggle_rift.py vocal-a.wav vocal-b.wav vocal-c.wav \
   --output-dir /path/to/results
 ```
 
@@ -60,8 +72,8 @@ uv run python scripts/kaggle_separate.py vocals.wav \
   --output-dir /path/to/results
 ```
 
-两者都会更新私有输入 Dataset、提交固定 T4 Script Kernel、等待完成、下载结果，
-并校验任务 ID、文件哈希、音频格式和时长。完整参数和故障恢复见
+RIFT 批次会让双 T4 各加载一套常驻推理运行时并动态领取输入；辅助分离仍按所选公开
+模型提交。两者都会校验任务 ID、文件哈希、音频格式和时长。完整参数和故障恢复见
 [`kaggle/README.md`](kaggle/README.md)。
 
 ## 本地推理
@@ -93,8 +105,13 @@ uv run python infer.py \
 
 ## 制作与维护
 
-歌曲制作从 [`docs/workflow/README.md`](docs/workflow/README.md) 开始；歌曲专属
-素材、时间点、试听结论和版本记录保存在歌曲目录。
+歌曲制作只维护一份 [`docs/workflow/README.md`](docs/workflow/README.md)。歌曲专属
+处理通过版本名、脚本和同目录输出表达，不要求维护额外的素材、问题或版本文档。
+工作区入口为：
+
+```bash
+uv run python -m rift_svc.mixctl --help
+```
 
 修改代码或更新依赖后运行：
 
