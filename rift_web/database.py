@@ -112,7 +112,15 @@ class Database:
         with self.connect() as connection:
             return list(
                 connection.execute(
-                    "SELECT * FROM jobs ORDER BY created_at DESC, id DESC LIMIT 200"
+                    """
+                    SELECT * FROM jobs
+                    ORDER BY
+                        CASE WHEN status = 'queued' THEN 0 ELSE 1 END,
+                        CASE WHEN status = 'queued' THEN created_at END ASC,
+                        created_at DESC,
+                        id DESC
+                    LIMIT 200
+                    """
                 )
             )
 
