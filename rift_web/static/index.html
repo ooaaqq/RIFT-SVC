@@ -15,7 +15,7 @@
     button { cursor: pointer; }
     .row { display: grid; grid-template-columns: 1fr 180px auto; gap: 10px; }
     .jobs { display: grid; gap: 9px; }
-    .job { display: grid; grid-template-columns: 44px 150px minmax(0, 1fr) 100px 110px; gap: 12px; align-items: center; }
+    .job { display: grid; grid-template-columns: 44px 150px minmax(0, 1fr) 100px 90px 60px; gap: 12px; align-items: center; }
     .muted { opacity: .62; font-size: .88rem; }
     .mine { border-color: #4d8cff; }
     .files a { display: block; margin-top: 7px; }
@@ -26,9 +26,9 @@
     #app[hidden], #login[hidden] { display: none; }
     [hidden] { display: none !important; }
     #login { margin-bottom: 22px; }
-    #logout { margin-left: 8px; }
+    #logout { margin-left: 8px; padding: 4px 9px; font-size: .85rem; }
     h1 { display: flex; align-items: center; gap: 10px; }
-    .inline-login { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; }
+    .inline-login { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; border: 0; padding: 0; }
     .inline-login input { width: 150px; }
     @media (max-width: 650px) {
       h1 { align-items: flex-start; flex-wrap: wrap; }
@@ -41,6 +41,8 @@
     .params-view { margin-top: 6px; font-size: .8rem; opacity: .72; }
     .owner { white-space: nowrap; }
     .queue-number { font-variant-numeric: tabular-nums; font-weight: 700; color: #9ec1ff; }
+    .queue-head { display: grid; grid-template-columns: 44px 150px 1fr 100px 90px 60px; gap: 12px; padding: 0 14px 6px; color: #888f9c; font-size: .78rem; }
+    .queue-head span:last-child { text-align: right; }
   </style>
 </head>
 <body>
@@ -70,6 +72,7 @@
       <div id="submit-status" class="muted"></div>
     </form>
     <h2>队列</h2>
+    <div class="queue-head"><span>序号</span><span>提交人</span><span>标题</span><span>类型</span><span>状态</span></div>
     <div id="jobs" class="jobs"></div>
   </main>
 
@@ -144,7 +147,7 @@
         const model = document.createElement('div'); model.className = 'params-view';
         if (job.kind === 'rift' && job.params && expanded.has(job.id)) model.textContent = Object.entries(job.params).map(([key, value]) => `${key} ${value}`).join(' · ');
         const meta = document.createElement('div'); meta.className = 'muted';
-        meta.textContent = `${job.id.slice(0,8)}`;
+        meta.textContent = expanded.has(job.id) ? `${job.id.slice(0,8)}` : '';
         const files = document.createElement('div'); files.className = 'files'; files.dataset.files = job.id;
         summary.append(title, model, meta, files);
         const kind = document.createElement('span'); kind.textContent = job.kind_label;
@@ -153,7 +156,7 @@
         if (job.owned && job.status === 'queued') {
           const cancel = document.createElement('button'); cancel.textContent = '取消';
           cancel.onclick = async event => { event.stopPropagation(); await request(`/api/jobs/${job.id}/cancel`, {method:'POST'}); await refresh(); };
-          summary.appendChild(cancel);
+          node.appendChild(cancel);
         }
         if (job.owned) {
           node.onclick = () => { if (job.status === 'succeeded') detail(job.id); else { expanded.has(job.id) ? expanded.delete(job.id) : expanded.add(job.id); refresh(); } };
