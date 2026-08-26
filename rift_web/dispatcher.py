@@ -64,6 +64,13 @@ class Dispatcher:
         command = self.command_for(job, result_directory)
         environment = os.environ.copy()
         environment["PYTHONUNBUFFERED"] = "1"
+        kaggle_credentials = self.settings.state_directory / "kaggle" / "credentials.json"
+        try:
+            environment["KAGGLE_API_TOKEN"] = json.loads(
+                kaggle_credentials.read_text(encoding="utf-8")
+            )["access_token"]
+        except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
+            raise RuntimeError("Kaggle OAuth credentials are unavailable") from error
         with log_path.open("ab", buffering=0) as log:
             log.write((f"\n$ {' '.join(command)}\n").encode())
             process = subprocess.Popen(
