@@ -53,19 +53,29 @@
     .submit-footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
     #submit-form > .submit-footer button { min-width: 96px; border-color: #6687c3; background: #6485bf; color: #fff; }
     #submit-form > .submit-footer button:hover { background: #6f91ce; }
+    .queue-shell { overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-soft); }
     .queue-head, .job-main { display: grid; grid-template-columns: 52px 160px minmax(180px, 1fr) 110px 110px 64px; gap: 12px; align-items: center; }
-    .queue-head { padding: 0 16px 7px; color: var(--muted); font-size: .76rem; }
+    .queue-head { padding: 11px 16px 10px; border-bottom: 1px solid var(--line); background: #181a1e; color: var(--muted); font-size: .72rem; letter-spacing: .025em; }
     .job-main > *, .queue-head > * { min-width: 0; text-align: left; }
-    .jobs { display: grid; gap: 7px; }
-    .job { padding: 14px 16px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-soft); }
-    .job:hover { border-color: var(--line-strong); }
-    .job.mine { border-color: #40577f; }
-    .job.mine:hover { border-color: #5874a7; }
-    .queue-number { color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 700; }
-    .owner { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .jobs { display: grid; }
+    .job { position: relative; padding: 13px 16px; border-bottom: 1px solid #24272c; background: transparent; transition: background-color .15s ease; }
+    .job:last-child { border-bottom: 0; }
+    .job:hover { background: #1a1d21; }
+    .job.mine { cursor: pointer; }
+    .queue-number { color: #7d8490; font-variant-numeric: tabular-nums; font-size: .85rem; font-weight: 650; }
+    .owner { overflow: hidden; color: #c2c6ce; font-size: .88rem; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+    .job-title { overflow: hidden; font-weight: 580; text-overflow: ellipsis; white-space: nowrap; }
+    .job-kind { color: var(--muted); font-size: .84rem; }
+    .status { font-size: .84rem; white-space: nowrap; }
+    .status-queued { color: #b9bec8; }
+    .status-running { color: #8fb3ff; }
+    .status-succeeded { color: #8ed1aa; }
+    .status-failed { color: #ef9b9b; }
+    .status-cancelled { color: #858b95; }
     .cancel { min-height: 30px; border: 0; background: transparent; padding: 3px 0; color: var(--danger); font-size: .84rem; text-align: left; }
     .cancel:hover { border: 0; background: transparent; color: #ffb0b0; }
-    .job-details { display: grid; gap: 16px; margin: 16px 0 2px 224px; }
+    .job-details { display: grid; gap: 16px; margin: 16px 0 3px 224px; padding: 15px 17px; border-radius: 8px; background: #121417; }
+    .job-details:empty { display: none; }
     .detail-section { display: grid; gap: 7px; }
     .detail-heading { color: var(--muted); font-size: .72rem; font-weight: 650; letter-spacing: .04em; }
     .detail-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px 22px; }
@@ -90,7 +100,9 @@
       .inline-login { flex: 1; }
       .row { grid-template-columns: 1fr; }
       .params { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .queue-shell { border-radius: 9px; }
       .queue-head { display: none; }
+      .job { padding: 14px; }
       .job-main { grid-template-columns: 34px minmax(0, 1fr) auto; gap: 6px 10px; }
       .job-main > :nth-child(2) { grid-column: 2; }
       .job-main > :nth-child(3) { grid-column: 2; }
@@ -146,8 +158,10 @@
       </div>
     </form>
     <h2>队列</h2>
-    <div class="queue-head"><span>序号</span><span>提交人</span><span>标题</span><span>类型</span><span>状态</span><span>操作</span></div>
-    <div id="jobs" class="jobs"></div>
+    <div class="queue-shell">
+      <div class="queue-head"><span>序号</span><span>提交人</span><span>标题</span><span>类型</span><span>状态</span><span>操作</span></div>
+      <div id="jobs" class="jobs"></div>
+    </div>
   </main>
 
   <script>
@@ -268,9 +282,9 @@
         const number = document.createElement('strong'); number.className = 'queue-number'; number.textContent = job.queue_position || '—';
         const owner = document.createElement('strong'); owner.className = 'owner'; owner.textContent = job.username;
         const summary = document.createElement('div');
-        const title = document.createElement('div'); title.textContent = job.title;
-        const kind = document.createElement('span'); kind.textContent = job.kind_label;
-        const state = document.createElement('span'); state.textContent = labels[job.status];
+        const title = document.createElement('div'); title.className = 'job-title'; title.textContent = job.title; title.title = job.title;
+        const kind = document.createElement('span'); kind.className = 'job-kind'; kind.textContent = job.kind_label;
+        const state = document.createElement('span'); state.className = `status status-${job.status}`; state.textContent = labels[job.status];
         summary.append(title);
         main.append(number, owner, summary, kind, state);
         if (job.owned && job.status === 'queued') {
