@@ -22,7 +22,6 @@
     body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.45; }
     main { width: min(1120px, calc(100% - 36px)); margin: 0 auto; padding: 34px 0 72px; }
     h1 { margin: 0; font-size: 1.25rem; font-weight: 680; letter-spacing: -.02em; }
-    h2 { margin: 30px 0 10px; font-size: .95rem; font-weight: 650; }
     form { display: grid; gap: 12px; }
     input, select, button { min-height: 42px; border: 1px solid var(--line-strong); border-radius: 7px; background: #1b1d21; color: var(--text); font: inherit; }
     input, select { width: 100%; padding: 9px 11px; outline: none; }
@@ -44,16 +43,17 @@
     .inline-login button, #logout { min-height: 36px; padding: 6px 10px; background: transparent; }
     #logout { border-color: transparent; color: var(--muted); }
     #logout:hover { color: var(--text); background: #1c1e22; }
-    #submit-form { padding: 16px; border-radius: 10px; background: var(--panel); }
-    .row { display: grid; grid-template-columns: minmax(250px, 1.5fr) 145px minmax(240px, 1fr) 190px; gap: 10px; align-items: center; }
+    #submit-form { padding: 15px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-soft); }
+    #submit-form input, #submit-form select { background: #181a1e; }
+    .row { display: grid; grid-template-columns: minmax(250px, 1.5fr) 145px minmax(240px, 1fr) 200px; gap: 10px; align-items: center; }
     .params { display: grid; grid-template-columns: repeat(7, minmax(90px, 1fr)); gap: 10px; padding-top: 2px; }
     .params label { color: var(--muted); font-size: .76rem; }
     .params .select-wrap { display: block; }
     .params input, .params select { min-height: 38px; margin-top: 5px; color: var(--text); }
     .submit-footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
-    #submit-form > .submit-footer button { min-width: 96px; border-color: #6687c3; background: #6485bf; color: #fff; }
-    #submit-form > .submit-footer button:hover { background: #6f91ce; }
-    .queue-shell { overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-soft); }
+    #submit-form > .submit-footer button { min-width: 96px; border-color: #40577f; background: #263650; color: #dbe6ff; }
+    #submit-form > .submit-footer button:hover { border-color: #5874a7; background: #2c3e5d; }
+    .queue-shell { overflow: hidden; margin-top: 24px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-soft); }
     .queue-head, .job-main { display: grid; grid-template-columns: 52px 160px minmax(180px, 1fr) 110px 110px 64px; gap: 12px; align-items: center; }
     .queue-head { padding: 11px 16px 10px; border-bottom: 1px solid var(--line); background: #181a1e; color: var(--muted); font-size: .72rem; letter-spacing: .025em; }
     .job-main > *, .queue-head > * { min-width: 0; text-align: left; }
@@ -157,7 +157,6 @@
         <button>提交</button>
       </div>
     </form>
-    <h2>队列</h2>
     <div class="queue-shell">
       <div class="queue-head"><span>序号</span><span>提交人</span><span>标题</span><span>类型</span><span>状态</span><span>操作</span></div>
       <div id="jobs" class="jobs"></div>
