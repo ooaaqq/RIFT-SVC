@@ -219,12 +219,18 @@ def main() -> None:
         run_folder(model, args, config, device, verbose=True)
         candidates = sorted(current_output_dir.rglob("*.wav"))
         vocals = [path for path in candidates if "vocals" in path.stem.lower()]
-        if len(candidates) != 2 or len(vocals) != 1:
+        if len(candidates) != 2:
             raise RuntimeError(
-                f"expected one vocal and one residual for {model_profile['label']}: "
+                f"expected two model outputs for {model_profile['label']}: "
                 f"{candidates}"
             )
-        vocal_outputs.append(vocals[0])
+        if profile.get("ensemble_algorithm"):
+            if len(vocals) != 1:
+                raise RuntimeError(
+                    f"expected one vocal output for ensemble {model_profile['label']}: "
+                    f"{candidates}"
+                )
+            vocal_outputs.append(vocals[0])
         model_records.append(
             {
                 "label": model_profile["label"],
