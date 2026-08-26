@@ -22,18 +22,21 @@
     .params { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
     .params label { font-size: .88rem; }
     .params input, .params select { width: 100%; margin-top: 3px; }
-    #login { max-width: 420px; margin-top: 18vh; }
+    #login { max-width: 420px; margin-top: 0; }
     #app[hidden], #login[hidden] { display: none; }
+    #login { margin-bottom: 22px; }
+    #logout { margin-left: 8px; }
     @media (max-width: 650px) {
       .row, .job { grid-template-columns: 1fr; }
       .params { grid-template-columns: repeat(2, 1fr); }
       .job { gap: 3px; }
     }
+    .logout { margin-left: 8px; }
+    .params-view { margin-top: 6px; font-size: .8rem; opacity: .72; }
   </style>
 </head>
 <body>
   <section id="login">
-    <h1>RIFT Queue</h1>
     <form id="login-form">
       <label>口令 <input id="token" type="password" required autocomplete="current-password"></label>
       <button>进入</button>
@@ -41,8 +44,8 @@
     </form>
   </section>
 
-  <main id="app" hidden>
-    <h1>RIFT Queue <span id="identity" class="muted"></span></h1>
+  <main id="app">
+    <h1>RIFT Queue <span id="identity" class="muted">未登录</span><button id="logout" hidden type="button">退出</button></h1>
     <form id="submit-form">
       <div class="row">
         <input name="title" maxlength="100" placeholder="任务名 / 歌曲名" required>
@@ -98,8 +101,8 @@
     async function enter() {
       const me = await request('/api/me');
       document.querySelector('#identity').textContent = `— ${me.username}`;
-      document.querySelector('#login').hidden = true;
-      document.querySelector('#app').hidden = false;
+      document.querySelector('#logout').hidden = false;
+      document.querySelector('#submit-form').hidden = false;
       await refresh();
     }
     document.querySelector('#login-form').addEventListener('submit', async event => {
@@ -107,6 +110,12 @@
       try {
         await request('/api/session', {method:'POST'}); token = ''; document.querySelector('#token').value = ''; await enter();
       } catch (error) { document.querySelector('#login-error').textContent = error.message; }
+    });
+    document.querySelector('#logout').addEventListener('click', async () => {
+      await fetch('/api/session', {method:'DELETE', headers: headers()});
+      token = ''; document.querySelector('#logout').hidden = true;
+      document.querySelector('#submit-form').hidden = true;
+      document.querySelector('#identity').textContent = '未登录'; await refresh();
     });
     document.querySelector('#submit-form').addEventListener('submit', async event => {
       event.preventDefault();
@@ -134,7 +143,8 @@
         const owner = document.createElement('strong'); owner.textContent = job.username;
         const summary = document.createElement('div');
         const title = document.createElement('div'); title.textContent = job.title;
-        const model = document.createElement('div'); model.className = 'muted'; model.textContent = modelInfo[job.kind];
+        const model = document.createElement('div'); model.className = 'params-view';
+        if (job.kind === 'rift' && job.params) model.textContent = Object.entries(job.params).map(([key, value]) => `${key} ${value}`).join(' · ');
         const meta = document.createElement('div'); meta.className = 'muted';
         meta.textContent = `${job.id.slice(0,8)}${job.queue_position ? ` · 队列第 ${job.queue_position}` : ''}`;
         const files = document.createElement('div'); files.className = 'files'; files.dataset.files = job.id;

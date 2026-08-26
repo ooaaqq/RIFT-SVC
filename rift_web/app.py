@@ -84,11 +84,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> User:
         token = request_token(request, authorization)
         if not token:
-            raise HTTPException(status_code=401, detail="需要匿名口令")
+            raise HTTPException(status_code=401, detail="需要口令")
         user = users.authenticate(token)
         if user is None:
-            raise HTTPException(status_code=401, detail="匿名口令无效")
+            raise HTTPException(status_code=401, detail="口令无效")
         return user
+
+    def optional_user(
+        request: Request, authorization: str | None = Header(default=None)
+    ) -> User:
+        token = request_token(request, authorization)
+        return users.authenticate(token) or User("", "", False)
 
     def serialize_job(
         row: object,
@@ -113,6 +119,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "queue_position": queue_position,
             "owned": owned,
         }
+        if record["kind"] == "rift":
+            result["params"] = json.loads(record.get("params_json") or "{}")
         if detail and owned:
             result.update(
                 {
@@ -160,7 +168,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         token = request_token(request, authorization)
         user = users.authenticate(token)
         if user is None:
-            raise HTTPException(status_code=401, detail="匿名口令无效")
+            raise HTTPException(status_code=401, detail="口令无效")
         response = JSONResponse({"username": user.username, "admin": user.admin})
         response.set_cookie(
             "rift_token",
@@ -180,7 +188,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     @app.get("/api/jobs")
-    def list_jobs(user: Annotated[User, Depends(current_user)]) -> list[dict]:
+    def list_jobs(user: Annotated[User, Depends(optional_user)]) -> list[dict]:
         rows = database.list_jobs()
         queued = sorted(
             (row for row in rows if row["status"] == "queued"),
