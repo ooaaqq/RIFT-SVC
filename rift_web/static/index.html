@@ -20,6 +20,8 @@
     .jobs { display: grid; gap: 9px; }
     .job { padding: 14px; }
     .job-main { display: grid; grid-template-columns: 44px 150px minmax(0, 1fr) 100px 90px 60px; gap: 12px; align-items: center; }
+    .job-main > :nth-child(1), .job-main > :nth-child(2), .job-main > :nth-child(4), .job-main > :nth-child(5), .job-main > :nth-child(6),
+    .queue-head > :nth-child(1), .queue-head > :nth-child(2), .queue-head > :nth-child(4), .queue-head > :nth-child(5), .queue-head > :nth-child(6) { text-align: center; }
     .muted { opacity: .62; font-size: .88rem; }
     .mine { border-color: #4d8cff; }
     .files a { display: block; margin-top: 7px; }
@@ -55,10 +57,11 @@
     .params-view { font-size: .84rem; }
     .model-links { display: flex; flex-wrap: wrap; gap: 8px 14px; }
     .mock-file { opacity: .72; }
+    .cancel { border: 0; background: transparent; padding: 4px 0; color: #d66; }
     .owner { white-space: nowrap; }
     .queue-number { font-variant-numeric: tabular-nums; font-weight: 700; color: #9ec1ff; }
     .queue-head { display: grid; grid-template-columns: 44px 150px minmax(0, 1fr) 100px 90px 60px; gap: 12px; padding: 0 14px 6px; color: #888f9c; font-size: .78rem; }
-    .queue-head span:last-child { text-align: right; }
+    .queue-head span:last-child { text-align: center; }
   </style>
 </head>
 <body>
@@ -115,8 +118,15 @@
         {name:'Big Beta 7', url:'https://huggingface.co/pcunwa/Mel-Band-Roformer-big'},
         {name:'BS-RoFormer Mag', url:'https://huggingface.co/anvuew/BS_RoFormer_mag'}
       ],
-      deharmony: [{name:'Karaoke BS-RoFormer', url:'https://huggingface.co/anvuew/karaoke_bs_roformer'}],
-      dereverb: [{name:'Dereverb BS-RoFormer', url:'https://huggingface.co/anvuew/dereverb_bs_roformer'}]
+      deharmony: [
+        {name:'Anvuew Karaoke BS-RoFormer', url:'https://huggingface.co/anvuew/karaoke_bs_roformer'},
+        {name:'Becruily Frazer Karaoke', url:'https://huggingface.co/becruily/bs-roformer-karaoke'},
+        {name:'Small Karaoke GaboxAUFR', url:'https://huggingface.co/GaboxR67/MelBandRoformers'}
+      ],
+      dereverb: [
+        {name:'Anvuew Dereverb BS-RoFormer 22.5050', url:'https://huggingface.co/anvuew/dereverb_bs_roformer'},
+        {name:'Dereverb BS-RoFormer（模拟候选）', url:'https://huggingface.co/anvuew/dereverb_bs_roformer', mock:true}
+      ]
     };
     const mockFiles = {
       rift: ['mock-rift-vocal.wav', 'mock-rift-manifest.json'],
@@ -210,7 +220,7 @@
         summary.append(title);
         main.append(number, owner, summary, kind, state);
         if (job.owned && job.status === 'queued') {
-          const cancel = document.createElement('button'); cancel.textContent = '取消';
+          const cancel = document.createElement('button'); cancel.className = 'cancel'; cancel.textContent = '取消';
           cancel.onclick = async event => { event.stopPropagation(); await request(`/api/jobs/${job.id}/cancel`, {method:'POST'}); await refresh(); };
           main.appendChild(cancel);
         }
@@ -221,6 +231,7 @@
           const modelLinks = document.createElement('span'); modelLinks.className = 'model-links detail-value';
           for (const entry of modelCatalog[job.kind] || []) {
             const link = document.createElement('a'); link.href = entry.url; link.target = '_blank'; link.rel = 'noreferrer'; link.textContent = entry.name;
+            if (entry.mock) link.className = 'mock-file';
             modelLinks.appendChild(link);
           }
           model.append(modelLabel, modelLinks);
