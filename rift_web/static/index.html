@@ -7,11 +7,12 @@
   <style>
     :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
     body { margin: 0 auto; max-width: 900px; padding: 32px 18px 80px; line-height: 1.5; }
-    h1 { font-size: 1.35rem; font-weight: 650; margin: 0 0 24px; }
+    h1 { font-size: 1.35rem; font-weight: 650; margin: 0; }
     h2 { font-size: 1rem; margin: 30px 0 12px; }
     form, .job { border: 1px solid color-mix(in srgb, currentColor 22%, transparent); border-radius: 8px; padding: 14px; }
     form { display: grid; gap: 12px; }
     input, select, button { box-sizing: border-box; font: inherit; padding: 9px 10px; }
+    select { padding-right: 30px; }
     button { cursor: pointer; }
     .row { display: grid; grid-template-columns: 1fr 180px auto; gap: 10px; }
     .jobs { display: grid; gap: 9px; }
@@ -26,13 +27,15 @@
     #app[hidden], #login[hidden] { display: none; }
     [hidden] { display: none !important; }
     #login { margin-bottom: 22px; }
-    #logout { margin-left: 8px; padding: 4px 9px; font-size: .85rem; }
-    h1 { display: flex; align-items: center; gap: 10px; }
-    .inline-login { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; border: 0; padding: 0; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 24px; }
+    .account { display: flex; align-items: center; justify-content: flex-end; gap: 9px; min-width: 0; }
+    #logout { margin: 0; padding: 5px 9px; font-size: .85rem; }
+    .inline-login { display: flex; align-items: center; gap: 7px; margin: 0; border: 0; padding: 0; }
     .inline-login input { width: 150px; }
     @media (max-width: 650px) {
-      h1 { align-items: flex-start; flex-wrap: wrap; }
-      .inline-login { width: 100%; margin-left: 0; }
+      .topbar { align-items: flex-start; flex-wrap: wrap; }
+      .account { width: 100%; justify-content: flex-start; }
+      .inline-login { flex: 1; }
       .row, .job { grid-template-columns: 1fr; }
       .params { grid-template-columns: repeat(2, 1fr); }
       .job { gap: 3px; }
@@ -41,14 +44,25 @@
     .params-view { margin-top: 6px; font-size: .8rem; opacity: .72; }
     .owner { white-space: nowrap; }
     .queue-number { font-variant-numeric: tabular-nums; font-weight: 700; color: #9ec1ff; }
-    .queue-head { display: grid; grid-template-columns: 44px 150px 1fr 100px 90px 60px; gap: 12px; padding: 0 14px 6px; color: #888f9c; font-size: .78rem; }
+    .queue-head { display: grid; grid-template-columns: 44px 150px minmax(0, 1fr) 100px 90px 60px; gap: 12px; padding: 0 14px 6px; color: #888f9c; font-size: .78rem; }
     .queue-head span:last-child { text-align: right; }
   </style>
 </head>
 <body>
   <main id="app">
-    <h1>RIFT Queue <span id="identity" class="muted">未登录</span><form id="login-form" class="inline-login"><input id="token" type="password" placeholder="口令" required autocomplete="current-password"><button type="submit">登录</button><button id="logout" hidden type="button">退出</button><span id="login-error" class="muted"></span></form></h1>
-    <form id="submit-form">
+    <header class="topbar">
+      <h1>RIFT Queue</h1>
+      <div class="account">
+        <span id="identity" class="muted">未登录</span>
+        <form id="login-form" class="inline-login">
+          <input id="token" type="password" placeholder="口令" required autocomplete="current-password">
+          <button type="submit">登录</button>
+          <button id="logout" hidden type="button">退出</button>
+          <span id="login-error" class="muted"></span>
+        </form>
+      </div>
+    </header>
+    <form id="submit-form" hidden>
       <div class="row">
         <input name="title" maxlength="100" placeholder="任务名 / 歌曲名" required>
         <select name="kind" id="kind" required>
@@ -72,7 +86,7 @@
       <div id="submit-status" class="muted"></div>
     </form>
     <h2>队列</h2>
-    <div class="queue-head"><span>序号</span><span>提交人</span><span>标题</span><span>类型</span><span>状态</span></div>
+    <div class="queue-head"><span>序号</span><span>提交人</span><span>标题</span><span>类型</span><span>状态</span><span>操作</span></div>
     <div id="jobs" class="jobs"></div>
   </main>
 
