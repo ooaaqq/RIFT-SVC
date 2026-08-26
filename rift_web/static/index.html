@@ -111,7 +111,6 @@
     a { color: #9fbdff; text-decoration: none; }
     a:hover { text-decoration: underline; }
     .detail-id { color: #717783; font: .72rem ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
-    .mock-file { color: #858b96; }
     @media (max-width: 900px) {
       .row { grid-template-columns: minmax(220px, 1fr) 150px; }
       .model-info { grid-template-columns: 1fr; }
@@ -198,12 +197,6 @@
     const paramLabels = {key_shift:'变调（半音）', steps:'推理步数', ds:'内容 CFG', spk:'音色 CFG', cfg_rescale:'CFG 重采样', robust_f0:'F0 融合', seed:'随机种子'};
     const f0Labels = {0:'关闭', 1:'轻量', 2:'完整'};
     let modelCatalog = {};
-    const mockFiles = {
-      rift: ['mock-rift-vocal.wav', 'mock-rift-manifest.json'],
-      background: ['mock-background-vocal.wav', 'mock-background-instrumental.wav'],
-      deharmony: ['mock-deharmony.wav'],
-      dereverb: ['mock-dereverb.wav']
-    };
     let token = '';
     const expanded = new Set();
     const detailCache = new Map();
@@ -294,13 +287,6 @@
       if (event.key === 'Escape') document.dispatchEvent(new Event('click'));
     });
     const headers = () => token ? {Authorization: `Bearer ${token}`} : {};
-    function appendMockFileLinks(job, target) {
-      for (const name of mockFiles[job.kind] || ['mock-output.wav']) {
-        const link = document.createElement('a'); link.className = 'mock-file'; link.textContent = `${name}（模拟）`;
-        link.href = `data:application/octet-stream;charset=utf-8,${encodeURIComponent(`RIFT Queue mock artifact\njob=${job.id}\nfile=${name}\n`)}`;
-        link.download = name; target.appendChild(link);
-      }
-    }
     async function request(path, options={}) {
       options.headers = {...(options.headers || {}), ...headers()};
       const response = await fetch(path, options);
@@ -402,7 +388,9 @@
             for (const file of privateJob.files) {
               const link = document.createElement('a'); link.textContent = file.name; link.href = file.url; link.download = file.name; files.appendChild(link);
             }
-          } else appendMockFileLinks(job, files);
+          } else {
+            const empty = document.createElement('span'); empty.className = 'muted'; empty.textContent = '暂无输出文件'; files.appendChild(empty);
+          }
           outputColumn.append(outputHeading, files); columns.append(inputColumn, outputColumn);
           fileSection.append(fileHeading, columns);
           details.append(modelSection, parameterSection, fileSection, meta);
