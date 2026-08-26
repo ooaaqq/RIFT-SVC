@@ -32,6 +32,34 @@ KIND_LABELS = {
     "rift": "RIFT",
 }
 
+RIFT_PARAMS = {
+    "key_shift": (-24, 24, int),
+    "steps": (2, 128, int),
+    "ds": (0.0, 2.0, float),
+    "spk": (0.0, 2.0, float),
+    "cfg_rescale": (0.0, 2.0, float),
+    "robust_f0": (0, 2, int),
+    "seed": (0, 2**31 - 1, int),
+}
+
+
+def parse_rift_params(values: dict[str, str], kind: str) -> str:
+    if kind != "rift":
+        return "{}"
+    parsed: dict[str, int | float] = {}
+    for name, (minimum, maximum, converter) in RIFT_PARAMS.items():
+        raw = values.get(name, "")
+        if not raw:
+            continue
+        try:
+            value = converter(raw)
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"RIFT 参数无效：{name}") from None
+        if not minimum <= value <= maximum:
+            raise HTTPException(status_code=422, detail=f"RIFT 参数超出范围：{name}")
+        parsed[name] = value
+    return json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_environment()
@@ -176,6 +204,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title: Annotated[str, Form()],
         kind: Annotated[str, Form()],
         upload: Annotated[UploadFile, File()],
+        request: Request,
         user: Annotated[User, Depends(current_user)],
     ) -> dict:
         title = title.strip()
@@ -183,6 +212,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail="任务名必须为 1-100 个字符")
         if kind not in JOB_KINDS:
             raise HTTPException(status_code=422, detail="不支持该处理类型")
+        params_json = parse_rift_params(dict(await request.form()), kind)
         original_name = Path(upload.filename or "audio").name
         suffix = Path(original_name).suffix.lower()
         if suffix not in ALLOWED_SUFFIXES:
@@ -223,6 +253,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "input_sha256": sha256(input_path),
                 "input_bytes": total,
                 "audio_json": json.dumps(audio, ensure_ascii=False),
+                "params_json": params_json,
                 "created_at": now_iso(),
             }
             database.create_job(record)

@@ -17,7 +17,7 @@ jq -n \
   --arg admin "$(token_hash local-admin)" \
   --arg friend "$(token_hash local-friend)" \
   '[
-    {username:"本地管理员",token_sha256:$admin,admin:true},
+    {username:"给力给力GOGOGO",token_sha256:$admin,admin:true},
     {username:"本地好友",token_sha256:$friend,admin:false}
   ]' > "$users_file"
 chmod 0600 "$users_file"

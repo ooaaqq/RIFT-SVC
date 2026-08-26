@@ -35,13 +35,27 @@ class Dispatcher:
     def command_for(self, job: object, result_directory: Path) -> list[str]:
         input_path = str(job["input_path"])
         if job["kind"] == "rift":
-            return [
+            params = json.loads(job["params_json"] or "{}")
+            command = [
                 sys.executable,
                 str(self.settings.source_root / "scripts/kaggle_rift.py"),
                 input_path,
                 "--output-dir",
                 str(result_directory),
             ]
+            flags = {
+                "key_shift": "--key-shift",
+                "steps": "--steps",
+                "ds": "--ds",
+                "spk": "--spk",
+                "cfg_rescale": "--cfg-rescale",
+                "robust_f0": "--robust-f0",
+                "seed": "--seed",
+            }
+            for name, flag in flags.items():
+                if name in params:
+                    command.extend([flag, str(params[name])])
+            return command
         return [
             sys.executable,
             str(self.settings.source_root / "scripts/kaggle_separate.py"),

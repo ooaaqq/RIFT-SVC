@@ -19,10 +19,14 @@
     .muted { opacity: .62; font-size: .88rem; }
     .mine { border-color: #4d8cff; }
     .files a { display: block; margin-top: 7px; }
+    .params { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .params label { font-size: .88rem; }
+    .params input, .params select { width: 100%; margin-top: 3px; }
     #login { max-width: 420px; margin-top: 18vh; }
     #app[hidden], #login[hidden] { display: none; }
     @media (max-width: 650px) {
       .row, .job { grid-template-columns: 1fr; }
+      .params { grid-template-columns: repeat(2, 1fr); }
       .job { gap: 3px; }
     }
   </style>
@@ -31,7 +35,7 @@
   <section id="login">
     <h1>RIFT Queue</h1>
     <form id="login-form">
-      <label>匿名口令 <input id="token" type="password" required autocomplete="current-password"></label>
+      <label>口令 <input id="token" type="password" required autocomplete="current-password"></label>
       <button>进入</button>
       <div id="login-error" class="muted"></div>
     </form>
@@ -42,7 +46,8 @@
     <form id="submit-form">
       <div class="row">
         <input name="title" maxlength="100" placeholder="任务名 / 歌曲名" required>
-        <select name="kind" required>
+        <select name="kind" id="kind" required>
+          <option value="rift" selected>RIFT</option>
           <option value="background">去背景</option>
           <option value="deharmony">去和声</option>
           <option value="dereverb">去混响</option>
@@ -50,16 +55,35 @@
         </select>
         <input name="upload" type="file" accept="audio/*,.wav,.flac,.m4a,.mp3,.ogg,.opus" required>
       </div>
-      <button>提交一个单步任务</button>
+      <div id="rift-params" class="params">
+        <label>变调 <input name="key_shift" type="number" min="-24" max="24" value="0"></label>
+        <label>步数 <input name="steps" type="number" min="2" max="128" value="32"></label>
+        <label>DS CFG <input name="ds" type="number" min="0" max="2" step="0.05" value="0.2"></label>
+        <label>说话人 CFG <input name="spk" type="number" min="0" max="2" step="0.05" value="0.8"></label>
+        <label>CFG 重采样 <input name="cfg_rescale" type="number" min="0" max="2" step="0.05" value="0.7"></label>
+        <label>F0 <select name="robust_f0"><option value="0" selected>关闭</option><option value="1">稳健</option><option value="2">强</option></select></label>
+        <label>随机种子 <input name="seed" type="number" min="0" value="7"></label>
+      </div>
+      <button>提交</button>
       <div id="submit-status" class="muted"></div>
     </form>
-    <h2>共享任务队列</h2>
+    <h2>队列</h2>
     <div id="jobs" class="jobs"></div>
   </main>
 
   <script>
     const labels = {queued:'○ 等待',running:'● 处理中',succeeded:'✓ 完成',failed:'× 失败',cancelled:'— 已取消'};
     let token = '';
+    const expanded = new Set();
+    const modelInfo = {
+      rift: 'RIFT-SVC · github.com/ooaaqq/RIFT-SVC',
+      background: 'Big Beta 7 + BS-RoFormer mag · huggingface.co/pcunwa/Mel-Band-Roformer-big',
+      deharmony: 'Anvuew Karaoke BS-RoFormer · huggingface.co/anvuew/karaoke_bs_roformer',
+      dereverb: 'Anvuew Dereverb BS-RoFormer · huggingface.co/anvuew/dereverb_bs_roformer'
+    };
+    const kind = document.querySelector('#kind');
+    const params = document.querySelector('#rift-params');
+    kind.addEventListener('change', () => { params.hidden = kind.value !== 'rift'; });
     const headers = () => token ? {Authorization: `Bearer ${token}`} : {};
     async function request(path, options={}) {
       options.headers = {...(options.headers || {}), ...headers()};
@@ -95,6 +119,7 @@
     async function detail(id) {
       const job = await request(`/api/jobs/${id}`);
       const target = document.querySelector(`[data-files="${id}"]`);
+      expanded.add(id);
       target.innerHTML = '';
       for (const file of job.files || []) {
         const link = document.createElement('a'); link.textContent = file.name; link.href = '#';
@@ -109,10 +134,11 @@
         const owner = document.createElement('strong'); owner.textContent = job.username;
         const summary = document.createElement('div');
         const title = document.createElement('div'); title.textContent = job.title;
+        const model = document.createElement('div'); model.className = 'muted'; model.textContent = modelInfo[job.kind];
         const meta = document.createElement('div'); meta.className = 'muted';
         meta.textContent = `${job.id.slice(0,8)}${job.queue_position ? ` · 队列第 ${job.queue_position}` : ''}`;
         const files = document.createElement('div'); files.className = 'files'; files.dataset.files = job.id;
-        summary.append(title, meta, files);
+        summary.append(title, model, meta, files);
         const kind = document.createElement('span'); kind.textContent = job.kind_label;
         const state = document.createElement('span'); state.textContent = labels[job.status];
         node.append(owner, summary, kind, state);
@@ -121,7 +147,10 @@
           cancel.onclick = async event => { event.stopPropagation(); await request(`/api/jobs/${job.id}/cancel`, {method:'POST'}); await refresh(); };
           summary.appendChild(cancel);
         }
-        if (job.owned && job.status === 'succeeded') node.onclick = () => detail(job.id);
+        if (job.owned && job.status === 'succeeded') {
+          node.onclick = () => detail(job.id);
+          if (expanded.has(job.id)) detail(job.id).catch(() => {});
+        }
         root.appendChild(node);
       }
     }
