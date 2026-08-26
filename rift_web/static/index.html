@@ -22,30 +22,29 @@
     .params { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
     .params label { font-size: .88rem; }
     .params input, .params select { width: 100%; margin-top: 3px; }
-    #login { max-width: 420px; margin-top: 0; }
+    #login { max-width: 420px; margin: 0 0 24px auto; }
     #app[hidden], #login[hidden] { display: none; }
     #login { margin-bottom: 22px; }
     #logout { margin-left: 8px; }
+    h1 { display: flex; align-items: center; gap: 10px; }
+    .inline-login { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; }
+    .inline-login input { width: 150px; }
     @media (max-width: 650px) {
+      h1 { align-items: flex-start; flex-wrap: wrap; }
+      .inline-login { width: 100%; margin-left: 0; }
       .row, .job { grid-template-columns: 1fr; }
       .params { grid-template-columns: repeat(2, 1fr); }
       .job { gap: 3px; }
     }
     .logout { margin-left: 8px; }
     .params-view { margin-top: 6px; font-size: .8rem; opacity: .72; }
+    .owner { white-space: nowrap; }
+    .queue-number { font-variant-numeric: tabular-nums; font-weight: 700; color: #9ec1ff; }
   </style>
 </head>
 <body>
-  <section id="login">
-    <form id="login-form">
-      <label>口令 <input id="token" type="password" required autocomplete="current-password"></label>
-      <button>进入</button>
-      <div id="login-error" class="muted"></div>
-    </form>
-  </section>
-
   <main id="app">
-    <h1>RIFT Queue <span id="identity" class="muted">未登录</span><button id="logout" hidden type="button">退出</button></h1>
+    <h1>RIFT Queue <span id="identity" class="muted">未登录</span><form id="login-form" class="inline-login"><input id="token" type="password" placeholder="口令" required autocomplete="current-password"><button>登录</button><button id="logout" hidden type="button">退出</button><span id="login-error" class="muted"></span></form></h1>
     <form id="submit-form">
       <div class="row">
         <input name="title" maxlength="100" placeholder="任务名 / 歌曲名" required>
@@ -54,7 +53,6 @@
           <option value="background">去背景</option>
           <option value="deharmony">去和声</option>
           <option value="dereverb">去混响</option>
-          <option value="rift">RIFT</option>
         </select>
         <input name="upload" type="file" accept="audio/*,.wav,.flac,.m4a,.mp3,.ogg,.opus" required>
       </div>
@@ -78,12 +76,6 @@
     const labels = {queued:'○ 等待',running:'● 处理中',succeeded:'✓ 完成',failed:'× 失败',cancelled:'— 已取消'};
     let token = '';
     const expanded = new Set();
-    const modelInfo = {
-      rift: 'RIFT-SVC · github.com/ooaaqq/RIFT-SVC',
-      background: 'Big Beta 7 + BS-RoFormer mag · huggingface.co/pcunwa/Mel-Band-Roformer-big',
-      deharmony: 'Anvuew Karaoke BS-RoFormer · huggingface.co/anvuew/karaoke_bs_roformer',
-      dereverb: 'Anvuew Dereverb BS-RoFormer · huggingface.co/anvuew/dereverb_bs_roformer'
-    };
     const kind = document.querySelector('#kind');
     const params = document.querySelector('#rift-params');
     kind.addEventListener('change', () => { params.hidden = kind.value !== 'rift'; });
@@ -140,13 +132,14 @@
       const jobs = await request('/api/jobs'); const root = document.querySelector('#jobs'); root.innerHTML = '';
       for (const job of jobs) {
         const node = document.createElement('div'); node.className = `job ${job.owned ? 'mine' : ''}`;
-        const owner = document.createElement('strong'); owner.textContent = job.username;
+        const owner = document.createElement('strong'); owner.className = 'owner'; owner.textContent = job.username;
         const summary = document.createElement('div');
         const title = document.createElement('div'); title.textContent = job.title;
         const model = document.createElement('div'); model.className = 'params-view';
-        if (job.kind === 'rift' && job.params) model.textContent = Object.entries(job.params).map(([key, value]) => `${key} ${value}`).join(' · ');
+        if (job.kind === 'rift' && job.params && expanded.has(job.id)) model.textContent = Object.entries(job.params).map(([key, value]) => `${key} ${value}`).join(' · ');
         const meta = document.createElement('div'); meta.className = 'muted';
-        meta.textContent = `${job.id.slice(0,8)}${job.queue_position ? ` · 队列第 ${job.queue_position}` : ''}`;
+        meta.textContent = `${job.id.slice(0,8)}`;
+        if (job.queue_position) { const number = document.createElement('span'); number.className = 'queue-number'; number.textContent = `${job.queue_position} · `; meta.prepend(number); }
         const files = document.createElement('div'); files.className = 'files'; files.dataset.files = job.id;
         summary.append(title, model, meta, files);
         const kind = document.createElement('span'); kind.textContent = job.kind_label;
@@ -157,9 +150,9 @@
           cancel.onclick = async event => { event.stopPropagation(); await request(`/api/jobs/${job.id}/cancel`, {method:'POST'}); await refresh(); };
           summary.appendChild(cancel);
         }
-        if (job.owned && job.status === 'succeeded') {
-          node.onclick = () => detail(job.id);
-          if (expanded.has(job.id)) detail(job.id).catch(() => {});
+        if (job.owned) {
+          node.onclick = () => { if (job.status === 'succeeded') detail(job.id); else { expanded.has(job.id) ? expanded.delete(job.id) : expanded.add(job.id); refresh(); } };
+          if (expanded.has(job.id) && job.status === 'succeeded') detail(job.id).catch(() => {});
         }
         root.appendChild(node);
       }
