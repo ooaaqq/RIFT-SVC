@@ -201,6 +201,10 @@ def test_only_owner_can_download_completed_output(tmp_path: Path) -> None:
     )
     client = TestClient(create_app(config))
 
+    assert client.get("/api/jobs/job/input", headers=auth("token-two")).status_code == 403
+    input_response = client.get("/api/jobs/job/input", headers=auth("token-one"))
+    assert input_response.status_code == 200
+    assert input_response.content == input_path.read_bytes()
     assert (
         client.get(
             "/api/jobs/job/files/converted.wav", headers=auth("token-two")

@@ -34,7 +34,8 @@
     .select-wrap:not(.enhanced)::after { content: ''; position: absolute; width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); right: 14px; top: 50%; transform: translateY(-65%) rotate(45deg); pointer-events: none; }
     .select-wrap:not(.enhanced) select { appearance: none; padding-right: 38px; }
     .select-native { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-    .select-trigger { display: flex; width: 100%; min-height: 42px; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; background: #181a1e; font-weight: 400; text-align: left; }
+    .select-trigger { display: flex; width: 100%; min-height: 42px; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; overflow: hidden; padding: 9px 12px; background: #181a1e; font-weight: 400; text-align: left; }
+    .select-trigger-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .select-trigger::after { content: ''; width: 7px; height: 7px; flex: 0 0 auto; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: translateY(-2px) rotate(45deg); transition: transform .15s ease; }
     .select-wrap.open .select-trigger { border-color: #718fc7; box-shadow: 0 0 0 2px rgb(113 143 199 / 15%); }
     .select-wrap.open .select-trigger::after { transform: translateY(2px) rotate(225deg); }
@@ -54,8 +55,13 @@
     #submit-form { padding: 15px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-soft); }
     #submit-form input, #submit-form select { background: #181a1e; }
     .row { display: grid; grid-template-columns: minmax(250px, 1.5fr) 145px minmax(240px, 1fr) 200px; gap: 10px; align-items: center; }
+    .model-info { display: flex; min-height: 20px; align-items: baseline; gap: 7px 14px; color: var(--muted); font-size: .78rem; }
+    .model-info-links { display: flex; flex-wrap: wrap; gap: 7px 12px; }
     .params { display: grid; grid-template-columns: repeat(7, minmax(90px, 1fr)); gap: 10px; padding-top: 2px; }
-    .params label { color: var(--muted); font-size: .76rem; }
+    .params label { position: relative; color: var(--muted); font-size: .76rem; }
+    .params label[data-tip] { cursor: help; text-decoration: underline dotted #59606c; text-underline-offset: 3px; }
+    .params label[data-tip]::after { content: attr(data-tip); position: absolute; z-index: 40; bottom: calc(100% + 8px); left: 0; width: max-content; max-width: 230px; padding: 7px 9px; border: 1px solid var(--line-strong); border-radius: 6px; background: #24272d; box-shadow: 0 8px 24px rgb(0 0 0 / 30%); color: #d6dae1; font-size: .75rem; font-weight: 400; line-height: 1.4; opacity: 0; pointer-events: none; transform: translateY(3px); transition: opacity .12s ease, transform .12s ease; }
+    .params label[data-tip]:hover::after { opacity: 1; transform: translateY(0); }
     .params .select-wrap { display: block; }
     .params input, .params select { min-height: 38px; margin-top: 5px; color: var(--text); }
     .params .select-trigger { min-height: 38px; margin-top: 5px; }
@@ -92,6 +98,9 @@
     .detail-label { display: block; color: var(--muted); font-size: .74rem; }
     .detail-value { display: block; margin-top: 3px; overflow-wrap: anywhere; }
     .model-links, .files { display: flex; flex-wrap: wrap; gap: 7px 16px; }
+    .file-columns { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 24px; }
+    .file-column { display: grid; align-content: start; gap: 6px; min-width: 0; }
+    .file-column-heading { color: var(--muted); font-size: .74rem; }
     a { color: #9fbdff; text-decoration: none; }
     a:hover { text-decoration: underline; }
     .detail-id { color: #717783; font: .72rem ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
@@ -119,6 +128,7 @@
       .job-main > :nth-child(6) { grid-column: 3; grid-row: 1; }
       .job-details { margin-left: 44px; }
       .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .file-columns { grid-template-columns: 1fr; gap: 14px; }
     }
   </style>
 </head>
@@ -141,7 +151,7 @@
         <input name="title" maxlength="100" placeholder="任务名 / 歌曲名" required>
         <div class="select-wrap">
           <select name="kind" id="kind" required>
-            <option value="rift" selected>RIFT</option>
+            <option value="rift" selected>音色转换</option>
             <option value="background">提取干声</option>
             <option value="deharmony">去和声</option>
             <option value="dereverb">去混响</option>
@@ -152,14 +162,15 @@
         </div>
         <input name="upload" type="file" accept="audio/*,.wav,.flac,.m4a,.mp3,.ogg,.opus" required>
       </div>
+      <div id="model-info" class="model-info"></div>
       <div id="rift-params" class="params">
-        <label>变调（半音） <input name="key_shift" type="number" min="-24" max="24" value="0"></label>
-        <label>推理步数 <input name="steps" type="number" min="2" max="128" value="32"></label>
-        <label>内容 CFG <input name="ds" type="number" min="0" max="2" step="0.05" value="0.2"></label>
-        <label>音色 CFG <input name="spk" type="number" min="0" max="2" step="0.05" value="0.8"></label>
-        <label>CFG 重采样 <input name="cfg_rescale" type="number" min="0" max="2" step="0.05" value="0.7"></label>
-        <label>F0 融合 <span class="select-wrap"><select name="robust_f0"><option value="0" selected>关闭</option><option value="1">轻量</option><option value="2">完整</option></select></span></label>
-        <label>随机种子 <input name="seed" type="number" min="0" value="7"></label>
+        <label data-tip="整体升降音高；1 表示一个半音。">变调（半音） <input name="key_shift" type="number" min="-24" max="24" value="0"></label>
+        <label data-tip="采样迭代次数；越高越慢，通常更稳定。">推理步数 <input name="steps" type="number" min="2" max="128" value="32"></label>
+        <label data-tip="内容引导强度；越高越强调输入的发音与旋律细节。">内容 CFG <input name="ds" type="number" min="0" max="2" step="0.05" value="0.2"></label>
+        <label data-tip="目标音色引导强度；越高越强调目标说话人特征。">音色 CFG <input name="spk" type="number" min="0" max="2" step="0.05" value="0.8"></label>
+        <label data-tip="约束 CFG 引起的能量变化，避免引导过强。">CFG 重采样 <input name="cfg_rescale" type="number" min="0" max="2" step="0.05" value="0.7"></label>
+        <label data-tip="融合多种音高估计；复杂音高时可尝试轻量或完整。">F0 融合 <span class="select-wrap"><select name="robust_f0"><option value="0" selected>关闭</option><option value="1">轻量</option><option value="2">完整</option></select></span></label>
+        <label data-tip="控制初始噪声；相同输入和参数可复现结果。">随机种子 <input name="seed" type="number" min="0" value="7"></label>
       </div>
       <div class="submit-footer">
         <span id="submit-status" class="muted"></span>
@@ -185,18 +196,22 @@
     };
     let token = '';
     const expanded = new Set();
+    const detailCache = new Map();
     const kind = document.querySelector('#kind');
     const model = document.querySelector('#model');
+    const modelInfo = document.querySelector('#model-info');
     const params = document.querySelector('#rift-params');
     function enhanceSelect(select) {
       const wrapper = select.closest('.select-wrap');
       if (!wrapper || wrapper.classList.contains('enhanced')) return;
       wrapper.classList.add('enhanced'); select.classList.add('select-native');
       const trigger = document.createElement('button'); trigger.type = 'button'; trigger.className = 'select-trigger';
+      const triggerText = document.createElement('span'); triggerText.className = 'select-trigger-text'; trigger.appendChild(triggerText);
       const menu = document.createElement('div'); menu.className = 'select-menu'; menu.hidden = true;
       function close() { wrapper.classList.remove('open'); menu.hidden = true; }
       function refresh() {
-        trigger.textContent = select.selectedOptions[0]?.textContent || '';
+        triggerText.textContent = select.selectedOptions[0]?.textContent || '';
+        trigger.title = triggerText.textContent;
         menu.replaceChildren();
         for (const nativeOption of select.options) {
           const option = document.createElement('button'); option.type = 'button'; option.className = 'select-option';
@@ -217,6 +232,19 @@
       };
       select._refreshCustom = refresh; wrapper.append(trigger, menu); refresh();
     }
+    function updateModelInfo() {
+      const selected = (modelCatalog[kind.value] || []).find(entry => entry.id === model.value);
+      modelInfo.replaceChildren();
+      if (!selected) return;
+      const description = document.createElement('span'); description.textContent = selected.description;
+      const links = document.createElement('span'); links.className = 'model-info-links';
+      links.append('开源地址：');
+      for (const source of selected.sources || []) {
+        const link = document.createElement('a'); link.href = source.url; link.target = '_blank'; link.rel = 'noreferrer'; link.textContent = source.label;
+        links.appendChild(link);
+      }
+      modelInfo.append(description, links);
+    }
     function updateModels() {
       model.replaceChildren();
       for (const entry of modelCatalog[kind.value] || []) {
@@ -224,8 +252,10 @@
         model.appendChild(option);
       }
       model._refreshCustom?.();
+      updateModelInfo();
     }
     kind.addEventListener('change', () => { params.hidden = kind.value !== 'rift'; updateModels(); });
+    model.addEventListener('change', updateModelInfo);
     document.addEventListener('click', () => document.querySelectorAll('.select-wrap.open').forEach(wrapper => {
       wrapper.classList.remove('open'); wrapper.querySelector('.select-menu').hidden = true;
     }));
@@ -285,21 +315,7 @@
     });
     async function detail(id) {
       const job = await request(`/api/jobs/${id}`);
-      expanded.add(id);
-      let target = document.querySelector(`[data-files="${id}"]`);
-      if (!target) {
-        await refresh();
-        target = document.querySelector(`[data-files="${id}"]`);
-      }
-      target.innerHTML = '';
-      if (job.files && job.files.length) {
-        for (const file of job.files) {
-          const link = document.createElement('a'); link.textContent = file.name; link.href = file.url; link.download = file.name;
-          target.appendChild(link);
-        }
-      } else {
-        appendMockFileLinks(job, target);
-      }
+      detailCache.set(id, job); expanded.add(id); await refresh();
     }
     async function refresh() {
       const jobs = await request('/api/jobs'); const root = document.querySelector('#jobs'); root.innerHTML = '';
@@ -321,16 +337,11 @@
         }
         const details = document.createElement('div'); details.className = 'job-details';
         if (expanded.has(job.id)) {
+          const privateJob = detailCache.get(job.id);
           const modelSection = document.createElement('section'); modelSection.className = 'detail-section';
           const modelHeading = document.createElement('div'); modelHeading.className = 'detail-heading'; modelHeading.textContent = '处理模型';
           const modelName = document.createElement('div'); modelName.className = 'detail-value'; modelName.textContent = job.model_label;
-          const modelLinks = document.createElement('div'); modelLinks.className = 'model-links';
-          const selectedModel = (modelCatalog[job.kind] || []).find(entry => entry.id === job.model);
-          for (const source of selectedModel?.sources || []) {
-            const link = document.createElement('a'); link.href = source.url; link.target = '_blank'; link.rel = 'noreferrer'; link.textContent = source.label;
-            modelLinks.appendChild(link);
-          }
-          modelSection.append(modelHeading, modelName, modelLinks);
+          modelSection.append(modelHeading, modelName);
           const parameterSection = document.createElement('section'); parameterSection.className = 'detail-section';
           const parameterHeading = document.createElement('div'); parameterHeading.className = 'detail-heading'; parameterHeading.textContent = '参数';
           const parameterGrid = document.createElement('div'); parameterGrid.className = 'detail-grid';
@@ -348,10 +359,22 @@
           const fileSection = document.createElement('section'); fileSection.className = 'detail-section';
           const fileHeading = document.createElement('div'); fileHeading.className = 'detail-heading'; fileHeading.textContent = '文件';
           const meta = document.createElement('div'); meta.className = 'detail-id'; meta.textContent = `任务编号：${job.id}`;
+          const columns = document.createElement('div'); columns.className = 'file-columns';
+          const inputColumn = document.createElement('div'); inputColumn.className = 'file-column';
+          const inputHeading = document.createElement('div'); inputHeading.className = 'file-column-heading'; inputHeading.textContent = '输入文件';
+          const inputLink = document.createElement('a'); inputLink.textContent = privateJob?.original_name || '—'; inputLink.href = privateJob?.input_url || '#'; inputLink.download = privateJob?.original_name || '';
+          inputColumn.append(inputHeading, inputLink);
+          const outputColumn = document.createElement('div'); outputColumn.className = 'file-column';
+          const outputHeading = document.createElement('div'); outputHeading.className = 'file-column-heading'; outputHeading.textContent = '输出文件';
           const files = document.createElement('div'); files.className = 'files'; files.dataset.files = job.id;
-          fileSection.append(fileHeading, files);
+          if (privateJob?.files?.length) {
+            for (const file of privateJob.files) {
+              const link = document.createElement('a'); link.textContent = file.name; link.href = file.url; link.download = file.name; files.appendChild(link);
+            }
+          } else appendMockFileLinks(job, files);
+          outputColumn.append(outputHeading, files); columns.append(inputColumn, outputColumn);
+          fileSection.append(fileHeading, columns);
           details.append(modelSection, parameterSection, fileSection, meta);
-          if (job.status !== 'succeeded') appendMockFileLinks(job, files);
         }
         node.append(main, details);
         details.onclick = event => event.stopPropagation();
@@ -359,10 +382,8 @@
         if (job.owned) {
           node.onclick = () => {
             if (expanded.has(job.id)) { expanded.delete(job.id); refresh(); }
-            else if (job.status === 'succeeded') detail(job.id);
-            else { expanded.add(job.id); refresh(); }
+            else detail(job.id);
           };
-          if (expanded.has(job.id) && job.status === 'succeeded') detail(job.id).catch(() => {});
         }
       }
     }

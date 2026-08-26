@@ -30,7 +30,7 @@ KIND_LABELS = {
     "background": "提取干声",
     "deharmony": "去和声",
     "dereverb": "去混响",
-    "rift": "RIFT",
+    "rift": "音色转换",
 }
 
 RIFT_PARAMS = {
@@ -131,6 +131,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             result.update(
                 {
                     "original_name": record["original_name"],
+                    "input_url": f"/api/jobs/{record['id']}/input",
                     "input_sha256": record["input_sha256"],
                     "input_bytes": record["input_bytes"],
                     "audio": json.loads(record["audio_json"]),
@@ -296,6 +297,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not database.cancel(job_id, user.username, user.admin):
             raise HTTPException(status_code=409, detail="只能取消自己的等待中任务")
         return {"cancelled": True}
+
+    @app.get("/api/jobs/{job_id}/input")
+    def download_input(
+        job_id: str, user: Annotated[User, Depends(current_user)]
+    ) -> FileResponse:
+        job = database.get_job(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        if not user.admin and job["username"] != user.username:
+            raise HTTPException(status_code=403, detail="只能访问自己的任务文件")
+        path = Path(job["input_path"])
+        if not path.is_file():
+            raise HTTPException(status_code=410, detail="输入文件已经过期删除")
+        return FileResponse(path, filename=job["original_name"])
 
     @app.get("/api/jobs/{job_id}/files/{name}")
     def download_file(
