@@ -17,7 +17,7 @@
     .select-wrap select { appearance: none; width: 100%; padding-right: 38px; }
     .select-wrap option { color: #f2f4f8; background: #292b2f; }
     button { cursor: pointer; }
-    .row { display: grid; grid-template-columns: minmax(0, 1fr) 180px 220px auto; gap: 10px; }
+    .row { display: grid; grid-template-columns: minmax(220px, 1.35fr) 150px minmax(220px, 1fr) 175px; gap: 10px; }
     .jobs { display: grid; gap: 9px; }
     .job { padding: 14px; }
     .job-main { display: grid; grid-template-columns: 44px 150px minmax(0, 1fr) 100px 90px 60px; gap: 12px; align-items: center; }
@@ -49,7 +49,7 @@
       .job-main { gap: 3px; }
     }
     .logout { margin-left: 8px; }
-    .job-details { margin-top: 10px; }
+    .job-details { display: grid; gap: 12px; margin-top: 12px; }
     .detail-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 16px; }
     .detail-item { min-width: 0; }
     .detail-label { display: block; font-size: .75rem; opacity: .6; }
@@ -118,10 +118,13 @@
     const f0Labels = {0:'关闭', 1:'稳健', 2:'强'};
     const modelCatalog = {
       rift: [{name:'RIFT25K', url:'https://huggingface.co/ooaaqq/rift-svc-luzao-25k'}],
-      background: [
-        {name:'Big Beta 7', url:'https://huggingface.co/pcunwa/Mel-Band-Roformer-big'},
-        {name:'BS-RoFormer Mag', url:'https://huggingface.co/anvuew/BS_RoFormer_mag'}
-      ],
+      background: [{
+        name:'Big Beta 7 + BS-RoFormer Mag · Max Spec',
+        links:[
+          {name:'Big Beta 7', url:'https://huggingface.co/pcunwa/Mel-Band-Roformer-big'},
+          {name:'BS-RoFormer Mag', url:'https://huggingface.co/anvuew/BS_RoFormer_mag'}
+        ]
+      }],
       deharmony: [
         {name:'Anvuew Karaoke BS-RoFormer', url:'https://huggingface.co/anvuew/karaoke_bs_roformer'},
         {name:'Becruily Frazer Karaoke', url:'https://huggingface.co/becruily/bs-roformer-karaoke'},
@@ -243,9 +246,11 @@
           const modelLabel = document.createElement('span'); modelLabel.className = 'detail-label'; modelLabel.textContent = '模型（示例）';
           const modelLinks = document.createElement('span'); modelLinks.className = 'model-links detail-value';
           for (const entry of modelCatalog[job.kind] || []) {
-            const link = document.createElement('a'); link.href = entry.url; link.target = '_blank'; link.rel = 'noreferrer'; link.textContent = entry.name;
-            if (entry.mock) link.className = 'mock-file';
-            modelLinks.appendChild(link);
+            for (const source of entry.links || [entry]) {
+              const link = document.createElement('a'); link.href = source.url; link.target = '_blank'; link.rel = 'noreferrer'; link.textContent = source.name;
+              if (entry.mock || source.mock) link.className = 'mock-file';
+              modelLinks.appendChild(link);
+            }
           }
           model.append(modelLabel, modelLinks);
           const parameterGrid = document.createElement('div'); parameterGrid.className = 'detail-grid';
