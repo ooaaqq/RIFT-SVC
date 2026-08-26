@@ -95,6 +95,15 @@ rift-cleanup      删除到期音频但保留任务记录和 manifest
 生产环境由 NixOS fleet 提供 `RIFT_WEB_USERS_FILE`、状态目录和 Kaggle credential；
 凭据、任务输入和输出不进入 Git 或 Nix store。
 
+本地修改前端或 API 时可直接运行开发预览：
+
+```bash
+./scripts/run-local-web.sh
+```
+
+浏览 `http://127.0.0.1:8767`，使用 `local-admin` 或 `local-friend`。本地预览只运行
+Web API，不启动 Kaggle dispatcher；状态写入被 Git 忽略的 `var/rift-web-local/`。
+
 ## 本地推理
 
 准备 `ckpts/rift25k.ckpt`，并下载辅助模型：
