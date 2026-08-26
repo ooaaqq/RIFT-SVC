@@ -13,6 +13,7 @@ from rift_web.app import create_app
 from rift_web.auth import UserStore
 from rift_web.config import Settings
 from rift_web.database import Database, now_iso
+from rift_web.dispatcher import Dispatcher
 
 
 def token_record(username: str, token: str, *, admin: bool = False) -> dict:
@@ -113,6 +114,52 @@ def test_shared_queue_hides_private_input_metadata(tmp_path: Path) -> None:
     assert "original_name" not in detail
     own_detail = client.get(f"/api/jobs/{job_id}", headers=auth("token-one")).json()
     assert own_detail["original_name"] == "private-name.wav"
+
+
+def test_selected_model_is_persisted_and_dispatched(tmp_path: Path) -> None:
+    config = settings(tmp_path)
+    source = tmp_path / "source.wav"
+    write_wave(source)
+    client = TestClient(create_app(config))
+
+    with source.open("rb") as audio:
+        response = client.post(
+            "/api/jobs",
+            headers=auth("token-one"),
+            data={
+                "title": "去和声候选",
+                "kind": "deharmony",
+                "model": "becruily-frazer-karaoke",
+            },
+            files={"upload": ("source.wav", audio, "audio/wav")},
+        )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["model"] == "becruily-frazer-karaoke"
+    row = Database(config.database_path).get_job(response.json()["id"])
+    assert row is not None
+    command = Dispatcher(config).command_for(row, tmp_path / "results")
+    assert command[command.index("--model") + 1] == "becruily-frazer-karaoke"
+
+
+def test_rejects_model_from_another_task_type(tmp_path: Path) -> None:
+    source = tmp_path / "source.wav"
+    write_wave(source)
+    client = TestClient(create_app(settings(tmp_path)))
+
+    with source.open("rb") as audio:
+        response = client.post(
+            "/api/jobs",
+            headers=auth("token-one"),
+            data={
+                "title": "错误模型",
+                "kind": "dereverb",
+                "model": "anvuew-karaoke",
+            },
+            files={"upload": ("source.wav", audio, "audio/wav")},
+        )
+
+    assert response.status_code == 422
 
 
 def test_only_owner_can_download_completed_output(tmp_path: Path) -> None:

@@ -142,7 +142,7 @@
         <div class="select-wrap">
           <select name="kind" id="kind" required>
             <option value="rift" selected>RIFT</option>
-            <option value="background">去背景</option>
+            <option value="background">提取干声</option>
             <option value="deharmony">去和声</option>
             <option value="dereverb">去混响</option>
           </select>
@@ -153,12 +153,12 @@
         <input name="upload" type="file" accept="audio/*,.wav,.flac,.m4a,.mp3,.ogg,.opus" required>
       </div>
       <div id="rift-params" class="params">
-        <label>变调 <input name="key_shift" type="number" min="-24" max="24" value="0"></label>
-        <label>步数 <input name="steps" type="number" min="2" max="128" value="32"></label>
-        <label>DS CFG <input name="ds" type="number" min="0" max="2" step="0.05" value="0.2"></label>
-        <label>说话人 CFG <input name="spk" type="number" min="0" max="2" step="0.05" value="0.8"></label>
+        <label>变调（半音） <input name="key_shift" type="number" min="-24" max="24" value="0"></label>
+        <label>推理步数 <input name="steps" type="number" min="2" max="128" value="32"></label>
+        <label>内容 CFG <input name="ds" type="number" min="0" max="2" step="0.05" value="0.2"></label>
+        <label>音色 CFG <input name="spk" type="number" min="0" max="2" step="0.05" value="0.8"></label>
         <label>CFG 重采样 <input name="cfg_rescale" type="number" min="0" max="2" step="0.05" value="0.7"></label>
-        <label>F0 <span class="select-wrap"><select name="robust_f0"><option value="0" selected>关闭</option><option value="1">稳健</option><option value="2">强</option></select></span></label>
+        <label>F0 融合 <span class="select-wrap"><select name="robust_f0"><option value="0" selected>关闭</option><option value="1">轻量</option><option value="2">完整</option></select></span></label>
         <label>随机种子 <input name="seed" type="number" min="0" value="7"></label>
       </div>
       <div class="submit-footer">
@@ -174,27 +174,9 @@
 
   <script>
     const labels = {queued:'○ 等待',running:'● 处理中',succeeded:'✓ 完成',failed:'× 失败',cancelled:'— 已取消'};
-    const paramLabels = {key_shift:'变调', steps:'步数', ds:'DS CFG', spk:'说话人 CFG', cfg_rescale:'CFG 重采样', robust_f0:'F0', seed:'随机种子'};
-    const f0Labels = {0:'关闭', 1:'稳健', 2:'强'};
-    const modelCatalog = {
-      rift: [{name:'RIFT25K', url:'https://huggingface.co/ooaaqq/rift-svc-luzao-25k'}],
-      background: [{
-        name:'Big Beta 7 + BS-RoFormer Mag · Max Spec',
-        links:[
-          {name:'Big Beta 7', url:'https://huggingface.co/pcunwa/Mel-Band-Roformer-big'},
-          {name:'BS-RoFormer Mag', url:'https://huggingface.co/anvuew/BS_RoFormer_mag'}
-        ]
-      }],
-      deharmony: [
-        {name:'Anvuew Karaoke BS-RoFormer', url:'https://huggingface.co/anvuew/karaoke_bs_roformer'},
-        {name:'Becruily Frazer Karaoke', url:'https://huggingface.co/becruily/bs-roformer-karaoke'},
-        {name:'Small Karaoke GaboxAUFR', url:'https://huggingface.co/GaboxR67/MelBandRoformers'}
-      ],
-      dereverb: [
-        {name:'Anvuew Dereverb BS-RoFormer 22.5050', url:'https://huggingface.co/anvuew/dereverb_bs_roformer'},
-        {name:'Dereverb BS-RoFormer（模拟候选）', url:'https://huggingface.co/anvuew/dereverb_bs_roformer', mock:true}
-      ]
-    };
+    const paramLabels = {key_shift:'变调（半音）', steps:'推理步数', ds:'内容 CFG', spk:'音色 CFG', cfg_rescale:'CFG 重采样', robust_f0:'F0 融合', seed:'随机种子'};
+    const f0Labels = {0:'关闭', 1:'轻量', 2:'完整'};
+    let modelCatalog = {};
     const mockFiles = {
       rift: ['mock-rift-vocal.wav', 'mock-rift-manifest.json'],
       background: ['mock-background-vocal.wav', 'mock-background-instrumental.wav'],
@@ -238,14 +220,12 @@
     function updateModels() {
       model.replaceChildren();
       for (const entry of modelCatalog[kind.value] || []) {
-        const option = document.createElement('option'); option.value = entry.name; option.textContent = entry.name;
+        const option = document.createElement('option'); option.value = entry.id; option.textContent = entry.label;
         model.appendChild(option);
       }
       model._refreshCustom?.();
     }
     kind.addEventListener('change', () => { params.hidden = kind.value !== 'rift'; updateModels(); });
-    updateModels();
-    document.querySelectorAll('.select-wrap select').forEach(enhanceSelect);
     document.addEventListener('click', () => document.querySelectorAll('.select-wrap.open').forEach(wrapper => {
       wrapper.classList.remove('open'); wrapper.querySelector('.select-menu').hidden = true;
     }));
@@ -342,16 +322,15 @@
         const details = document.createElement('div'); details.className = 'job-details';
         if (expanded.has(job.id)) {
           const modelSection = document.createElement('section'); modelSection.className = 'detail-section';
-          const modelHeading = document.createElement('div'); modelHeading.className = 'detail-heading'; modelHeading.textContent = '模型';
+          const modelHeading = document.createElement('div'); modelHeading.className = 'detail-heading'; modelHeading.textContent = '处理模型';
+          const modelName = document.createElement('div'); modelName.className = 'detail-value'; modelName.textContent = job.model_label;
           const modelLinks = document.createElement('div'); modelLinks.className = 'model-links';
-          for (const entry of modelCatalog[job.kind] || []) {
-            for (const source of entry.links || [entry]) {
-              const link = document.createElement('a'); link.href = source.url; link.target = '_blank'; link.rel = 'noreferrer'; link.textContent = source.name;
-              if (entry.mock || source.mock) link.className = 'mock-file';
-              modelLinks.appendChild(link);
-            }
+          const selectedModel = (modelCatalog[job.kind] || []).find(entry => entry.id === job.model);
+          for (const source of selectedModel?.sources || []) {
+            const link = document.createElement('a'); link.href = source.url; link.target = '_blank'; link.rel = 'noreferrer'; link.textContent = source.label;
+            modelLinks.appendChild(link);
           }
-          modelSection.append(modelHeading, modelLinks);
+          modelSection.append(modelHeading, modelName, modelLinks);
           const parameterSection = document.createElement('section'); parameterSection.className = 'detail-section';
           const parameterHeading = document.createElement('div'); parameterHeading.className = 'detail-heading'; parameterHeading.textContent = '参数';
           const parameterGrid = document.createElement('div'); parameterGrid.className = 'detail-grid';
@@ -387,7 +366,13 @@
         }
       }
     }
-    enter().catch(() => {});
+    async function initialize() {
+      const options = await request('/api/options'); modelCatalog = options.models;
+      for (const option of kind.options) option.textContent = options.kinds[option.value] || option.textContent;
+      updateModels(); document.querySelectorAll('.select-wrap select').forEach(enhanceSelect);
+      await enter().catch(() => refresh());
+    }
+    initialize().catch(error => { document.querySelector('#login-error').textContent = error.message; });
     setInterval(() => document.querySelector('#app').hidden || refresh().catch(()=>{}), 5000);
   </script>
 </body>

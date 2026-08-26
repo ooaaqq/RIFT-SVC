@@ -24,9 +24,10 @@ from rift_web.audio import ALLOWED_SUFFIXES, probe_audio, sha256
 from rift_web.auth import User, UserStore
 from rift_web.config import Settings
 from rift_web.database import JOB_KINDS, Database, now_iso
+from rift_web.models import get_model, public_catalog
 
 KIND_LABELS = {
-    "background": "去背景",
+    "background": "提取干声",
     "deharmony": "去和声",
     "dereverb": "去混响",
     "rift": "RIFT",
@@ -105,12 +106,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict:
         record = dict(row)
         owned = user.admin or record["username"] == user.username
+        selected_model = get_model(record["kind"], record.get("model"))
+        if selected_model is None:
+            raise RuntimeError(f"unsupported stored model: {record.get('model')}")
         result = {
             "id": record["id"],
             "username": record["username"],
             "title": record["title"],
             "kind": record["kind"],
             "kind_label": KIND_LABELS[record["kind"]],
+            "model": selected_model["id"],
+            "model_label": selected_model["label"],
             "status": record["status"],
             "created_at": record["created_at"],
             "started_at": record["started_at"],
@@ -155,6 +161,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "free_bytes": stat.f_bavail * stat.f_frsize,
             "dispatcher_heartbeat": database.metadata().get("dispatcher_heartbeat"),
         }
+
+    @app.get("/api/options")
+    def options() -> dict[str, object]:
+        return {"kinds": KIND_LABELS, "models": public_catalog()}
 
     @app.get("/api/me")
     def me(user: Annotated[User, Depends(current_user)]) -> dict[str, object]:
@@ -214,12 +224,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         upload: Annotated[UploadFile, File()],
         request: Request,
         user: Annotated[User, Depends(current_user)],
+        model: Annotated[str | None, Form()] = None,
     ) -> dict:
         title = title.strip()
         if not 1 <= len(title) <= 100:
             raise HTTPException(status_code=422, detail="任务名必须为 1-100 个字符")
         if kind not in JOB_KINDS:
             raise HTTPException(status_code=422, detail="不支持该处理类型")
+        selected_model = get_model(kind, model)
+        if selected_model is None:
+            raise HTTPException(status_code=422, detail="该处理类型不支持所选模型")
         params_json = parse_rift_params(dict(await request.form()), kind)
         original_name = Path(upload.filename or "audio").name
         suffix = Path(original_name).suffix.lower()
@@ -256,6 +270,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "username": user.username,
                 "title": title,
                 "kind": kind,
+                "model": selected_model["id"],
                 "original_name": original_name,
                 "input_path": str(input_path),
                 "input_sha256": sha256(input_path),

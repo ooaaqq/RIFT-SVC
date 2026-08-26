@@ -14,13 +14,8 @@ from pathlib import Path
 
 from rift_web.config import Settings
 from rift_web.database import Database
+from rift_web.models import get_model
 from scripts.kaggle_common import publish_directory_atomic, sha256
-
-PROFILE_BY_KIND = {
-    "background": "big-beta7-bs-roformer-mag-max-spec",
-    "deharmony": "anvuew-karaoke",
-    "dereverb": "anvuew-dereverb-22.5050",
-}
 
 
 class Dispatcher:
@@ -34,6 +29,9 @@ class Dispatcher:
 
     def command_for(self, job: object, result_directory: Path) -> list[str]:
         input_path = str(job["input_path"])
+        selected_model = get_model(job["kind"], job["model"])
+        if selected_model is None:
+            raise RuntimeError(f"unsupported model for {job['kind']}: {job['model']}")
         if job["kind"] == "rift":
             params = json.loads(job["params_json"] or "{}")
             command = [
@@ -61,7 +59,7 @@ class Dispatcher:
             str(self.settings.source_root / "scripts/kaggle_separate.py"),
             input_path,
             "--model",
-            PROFILE_BY_KIND[job["kind"]],
+            str(selected_model["profile"]),
             "--output-dir",
             str(result_directory),
         ]
@@ -144,6 +142,7 @@ class Dispatcher:
                         "job": job["id"],
                         "username": job["username"],
                         "kind": job["kind"],
+                        "model": job["model"],
                     },
                     ensure_ascii=False,
                 ),

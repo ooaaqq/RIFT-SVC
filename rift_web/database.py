@@ -42,6 +42,7 @@ class Database:
                     username TEXT NOT NULL,
                     title TEXT NOT NULL,
                     kind TEXT NOT NULL,
+                    model TEXT NOT NULL DEFAULT '',
                     status TEXT NOT NULL,
                     original_name TEXT NOT NULL,
                     input_path TEXT NOT NULL,
@@ -81,6 +82,9 @@ class Database:
             if "params_json" not in columns:
                 connection.execute(
                     "ALTER TABLE jobs ADD COLUMN params_json TEXT NOT NULL DEFAULT '{}'")
+            if "model" not in columns:
+                connection.execute(
+                    "ALTER TABLE jobs ADD COLUMN model TEXT NOT NULL DEFAULT ''")
 
     def create_job(self, record: dict[str, object]) -> None:
         if record["kind"] not in JOB_KINDS:
@@ -89,15 +93,16 @@ class Database:
             connection.execute(
                 """
                 INSERT INTO jobs (
-                    id, username, title, kind, status, original_name, input_path,
+                    id, username, title, kind, model, status, original_name, input_path,
                     input_sha256, input_bytes, audio_json, params_json, created_at
-                ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record["id"],
                     record["username"],
                     record["title"],
                     record["kind"],
+                    record.get("model", ""),
                     record["original_name"],
                     record["input_path"],
                     record["input_sha256"],
