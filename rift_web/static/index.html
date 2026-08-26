@@ -25,6 +25,8 @@
     form { display: grid; gap: 12px; }
     input, select, button { min-height: 42px; border: 1px solid var(--line-strong); border-radius: 7px; background: #1b1d21; color: var(--text); font: inherit; }
     input, select { width: 100%; padding: 9px 11px; outline: none; }
+    input[type="number"] { appearance: textfield; }
+    input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { margin: 0; appearance: none; }
     input:focus, select:focus { border-color: #718fc7; box-shadow: 0 0 0 2px rgb(113 143 199 / 15%); }
     button { padding: 8px 14px; cursor: pointer; font-weight: 600; }
     button:hover { border-color: #5b6270; background: #22252a; }
@@ -55,8 +57,11 @@
     #submit-form { padding: 15px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-soft); }
     #submit-form input, #submit-form select { background: #181a1e; }
     .row { display: grid; grid-template-columns: minmax(250px, 1.5fr) 145px minmax(240px, 1fr) 200px; gap: 10px; align-items: center; }
-    .model-info { display: flex; min-height: 20px; align-items: baseline; gap: 7px 14px; color: var(--muted); font-size: .78rem; }
-    .model-info-links { display: flex; flex-wrap: wrap; gap: 7px 12px; }
+    .model-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px 22px; }
+    .model-note { display: grid; align-content: start; gap: 3px; min-width: 0; }
+    .model-note-name { color: #d9dde4; font-size: .8rem; font-weight: 600; }
+    .model-note-description { color: var(--muted); font-size: .76rem; }
+    .model-info-links { display: flex; flex-wrap: wrap; gap: 7px 12px; font-size: .74rem; }
     .params { display: grid; grid-template-columns: repeat(7, minmax(90px, 1fr)); gap: 10px; padding-top: 2px; }
     .params label { position: relative; color: var(--muted); font-size: .76rem; }
     .params label[data-tip] { cursor: help; text-decoration: underline dotted #59606c; text-underline-offset: 3px; }
@@ -233,17 +238,20 @@
       select._refreshCustom = refresh; wrapper.append(trigger, menu); refresh();
     }
     function updateModelInfo() {
-      const selected = (modelCatalog[kind.value] || []).find(entry => entry.id === model.value);
       modelInfo.replaceChildren();
-      if (!selected) return;
-      const description = document.createElement('span'); description.textContent = selected.description;
-      const links = document.createElement('span'); links.className = 'model-info-links';
-      links.append('开源地址：');
-      for (const source of selected.sources || []) {
-        const link = document.createElement('a'); link.href = source.url; link.target = '_blank'; link.rel = 'noreferrer'; link.textContent = source.label;
-        links.appendChild(link);
+      if (kind.value === 'rift') { modelInfo.hidden = true; return; }
+      modelInfo.hidden = false;
+      for (const entry of modelCatalog[kind.value] || []) {
+        const note = document.createElement('div'); note.className = 'model-note';
+        const name = document.createElement('div'); name.className = 'model-note-name'; name.textContent = entry.label;
+        const description = document.createElement('div'); description.className = 'model-note-description'; description.textContent = entry.description;
+        const links = document.createElement('div'); links.className = 'model-info-links'; links.append('开源地址：');
+        for (const source of entry.sources || []) {
+          const link = document.createElement('a'); link.href = source.url; link.target = '_blank'; link.rel = 'noreferrer'; link.textContent = source.label;
+          links.appendChild(link);
+        }
+        note.append(name, description, links); modelInfo.appendChild(note);
       }
-      modelInfo.append(description, links);
     }
     function updateModels() {
       model.replaceChildren();
@@ -255,7 +263,6 @@
       updateModelInfo();
     }
     kind.addEventListener('change', () => { params.hidden = kind.value !== 'rift'; updateModels(); });
-    model.addEventListener('change', updateModelInfo);
     document.addEventListener('click', () => document.querySelectorAll('.select-wrap.open').forEach(wrapper => {
       wrapper.classList.remove('open'); wrapper.querySelector('.select-menu').hidden = true;
     }));
