@@ -31,9 +31,17 @@
     input[type="file"] { padding: 5px; color: var(--muted); }
     input[type="file"]::file-selector-button { height: 30px; margin-right: 9px; border: 0; border-radius: 5px; padding: 0 10px; background: #2a2d33; color: var(--text); cursor: pointer; }
     .select-wrap { position: relative; min-width: 0; }
-    .select-wrap::after { content: ''; position: absolute; width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); right: 14px; top: 50%; transform: translateY(-65%) rotate(45deg); pointer-events: none; }
-    .select-wrap select { appearance: none; padding-right: 38px; }
-    .select-wrap option { color: var(--text); background: #292b2f; }
+    .select-wrap:not(.enhanced)::after { content: ''; position: absolute; width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); right: 14px; top: 50%; transform: translateY(-65%) rotate(45deg); pointer-events: none; }
+    .select-wrap:not(.enhanced) select { appearance: none; padding-right: 38px; }
+    .select-native { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+    .select-trigger { display: flex; width: 100%; min-height: 42px; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; background: #181a1e; font-weight: 400; text-align: left; }
+    .select-trigger::after { content: ''; width: 7px; height: 7px; flex: 0 0 auto; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: translateY(-2px) rotate(45deg); transition: transform .15s ease; }
+    .select-wrap.open .select-trigger { border-color: #718fc7; box-shadow: 0 0 0 2px rgb(113 143 199 / 15%); }
+    .select-wrap.open .select-trigger::after { transform: translateY(2px) rotate(225deg); }
+    .select-menu { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; left: 0; display: grid; gap: 2px; max-height: 250px; overflow-y: auto; padding: 5px; border: 1px solid var(--line-strong); border-radius: 8px; background: #202328; box-shadow: 0 16px 38px rgb(0 0 0 / 38%); }
+    .select-option { width: 100%; min-height: 34px; border: 0; border-radius: 5px; background: transparent; padding: 7px 9px; color: #d6d9df; font-weight: 400; text-align: left; }
+    .select-option:hover { border: 0; background: #292d34; }
+    .select-option.selected { background: #303746; color: #dce7ff; }
     [hidden] { display: none !important; }
     .muted { color: var(--muted); font-size: .84rem; }
     .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
@@ -50,9 +58,10 @@
     .params label { color: var(--muted); font-size: .76rem; }
     .params .select-wrap { display: block; }
     .params input, .params select { min-height: 38px; margin-top: 5px; color: var(--text); }
+    .params .select-trigger { min-height: 38px; margin-top: 5px; }
     .submit-footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
-    #submit-form > .submit-footer button { min-width: 96px; border-color: #40577f; background: #263650; color: #dbe6ff; }
-    #submit-form > .submit-footer button:hover { border-color: #5874a7; background: #2c3e5d; }
+    #submit-form > .submit-footer button { min-width: 100px; min-height: 38px; border-color: #46566f; background: transparent; color: #b8ccf2; }
+    #submit-form > .submit-footer button:hover { border-color: #61779a; background: #1d2430; color: #dbe6ff; }
     .queue-shell { overflow: hidden; margin-top: 24px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-soft); }
     .queue-head, .job-main { display: grid; grid-template-columns: 52px 160px minmax(180px, 1fr) 110px 110px 64px; gap: 12px; align-items: center; }
     .queue-head { padding: 11px 16px 10px; border-bottom: 1px solid var(--line); background: #181a1e; color: var(--muted); font-size: .72rem; letter-spacing: .025em; }
@@ -154,7 +163,7 @@
       </div>
       <div class="submit-footer">
         <span id="submit-status" class="muted"></span>
-        <button>提交</button>
+        <button>提交任务</button>
       </div>
     </form>
     <div class="queue-shell">
@@ -197,15 +206,52 @@
     const kind = document.querySelector('#kind');
     const model = document.querySelector('#model');
     const params = document.querySelector('#rift-params');
+    function enhanceSelect(select) {
+      const wrapper = select.closest('.select-wrap');
+      if (!wrapper || wrapper.classList.contains('enhanced')) return;
+      wrapper.classList.add('enhanced'); select.classList.add('select-native');
+      const trigger = document.createElement('button'); trigger.type = 'button'; trigger.className = 'select-trigger';
+      const menu = document.createElement('div'); menu.className = 'select-menu'; menu.hidden = true;
+      function close() { wrapper.classList.remove('open'); menu.hidden = true; }
+      function refresh() {
+        trigger.textContent = select.selectedOptions[0]?.textContent || '';
+        menu.replaceChildren();
+        for (const nativeOption of select.options) {
+          const option = document.createElement('button'); option.type = 'button'; option.className = 'select-option';
+          option.textContent = nativeOption.textContent; option.classList.toggle('selected', nativeOption.selected);
+          option.onclick = event => {
+            event.stopPropagation(); select.value = nativeOption.value; select.dispatchEvent(new Event('change', {bubbles:true})); refresh(); close();
+          };
+          menu.appendChild(option);
+        }
+      }
+      trigger.onclick = event => {
+        event.stopPropagation();
+        const opening = menu.hidden;
+        document.querySelectorAll('.select-wrap.open').forEach(open => {
+          if (open !== wrapper) { open.classList.remove('open'); open.querySelector('.select-menu').hidden = true; }
+        });
+        wrapper.classList.toggle('open', opening); menu.hidden = !opening;
+      };
+      select._refreshCustom = refresh; wrapper.append(trigger, menu); refresh();
+    }
     function updateModels() {
       model.replaceChildren();
       for (const entry of modelCatalog[kind.value] || []) {
         const option = document.createElement('option'); option.value = entry.name; option.textContent = entry.name;
         model.appendChild(option);
       }
+      model._refreshCustom?.();
     }
     kind.addEventListener('change', () => { params.hidden = kind.value !== 'rift'; updateModels(); });
     updateModels();
+    document.querySelectorAll('.select-wrap select').forEach(enhanceSelect);
+    document.addEventListener('click', () => document.querySelectorAll('.select-wrap.open').forEach(wrapper => {
+      wrapper.classList.remove('open'); wrapper.querySelector('.select-menu').hidden = true;
+    }));
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') document.dispatchEvent(new Event('click'));
+    });
     const headers = () => token ? {Authorization: `Bearer ${token}`} : {};
     function appendMockFileLinks(job, target) {
       for (const name of mockFiles[job.kind] || ['mock-output.wav']) {
@@ -252,7 +298,9 @@
       const status = document.querySelector('#submit-status'); status.textContent = '上传中…';
       try {
         await request('/api/jobs', {method:'POST', body:new FormData(event.target)});
-        event.target.reset(); params.hidden = false; updateModels(); status.textContent = '已进入队列'; await refresh();
+        event.target.reset(); params.hidden = false; updateModels();
+        document.querySelectorAll('.select-wrap select').forEach(select => select._refreshCustom?.());
+        status.textContent = '已进入队列'; await refresh();
       } catch (error) { status.textContent = error.message; }
     });
     async function detail(id) {
