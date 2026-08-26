@@ -320,9 +320,17 @@ def run_job(args: argparse.Namespace) -> None:
         run(["kaggle", "kernels", "output", kernel_ref, "-p", str(download_dir), "-o"])
 
         validated = validate_outputs(job, download_dir)
+        # Keep the batch manifest beside the validated audio so the web
+        # dispatcher can publish and audit the complete result set.
+        manifests = sorted(download_dir.rglob("manifest.json"))
+        if len(manifests) != 1:
+            raise RuntimeError(f"expected one manifest, found {manifests}")
         targets = publish_directory_atomic(
             destination,
-            [(output, Path(item["output_name"])) for output, item in validated],
+            [
+                *[(output, Path(item["output_name"])) for output, item in validated],
+                (manifests[0], Path("manifest.json")),
+            ],
         )
         for target in targets:
             print(f"Downloaded audio: {target}")
