@@ -42,11 +42,19 @@
       .inline-login { flex: 1; }
       .row, .job-main { grid-template-columns: 1fr; }
       .params { grid-template-columns: repeat(2, 1fr); }
+      .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .job-main { gap: 3px; }
     }
     .logout { margin-left: 8px; }
-    .job-details { margin-top: 10px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent); }
-    .params-view { font-size: .8rem; opacity: .72; }
+    .job-details { margin-top: 10px; }
+    .detail-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 16px; }
+    .detail-item { min-width: 0; }
+    .detail-label { display: block; font-size: .75rem; opacity: .6; }
+    .detail-value { display: block; margin-top: 2px; overflow-wrap: anywhere; }
+    .detail-id { margin-top: 10px; font-size: .76rem; opacity: .62; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+    .params-view { font-size: .84rem; }
+    .model-links { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+    .mock-file { opacity: .72; }
     .owner { white-space: nowrap; }
     .queue-number { font-variant-numeric: tabular-nums; font-weight: 700; color: #9ec1ff; }
     .queue-head { display: grid; grid-template-columns: 44px 150px minmax(0, 1fr) 100px 90px 60px; gap: 12px; padding: 0 14px 6px; color: #888f9c; font-size: .78rem; }
@@ -99,12 +107,36 @@
 
   <script>
     const labels = {queued:'○ 等待',running:'● 处理中',succeeded:'✓ 完成',failed:'× 失败',cancelled:'— 已取消'};
+    const paramLabels = {key_shift:'变调', steps:'步数', ds:'DS CFG', spk:'说话人 CFG', cfg_rescale:'CFG 重采样', robust_f0:'F0', seed:'随机种子'};
+    const f0Labels = {0:'关闭', 1:'稳健', 2:'强'};
+    const modelCatalog = {
+      rift: [{name:'RIFT25K', url:'https://huggingface.co/ooaaqq/rift-svc-luzao-25k'}],
+      background: [
+        {name:'Big Beta 7', url:'https://huggingface.co/pcunwa/Mel-Band-Roformer-big'},
+        {name:'BS-RoFormer Mag', url:'https://huggingface.co/anvuew/BS_RoFormer_mag'}
+      ],
+      deharmony: [{name:'Karaoke BS-RoFormer', url:'https://huggingface.co/anvuew/karaoke_bs_roformer'}],
+      dereverb: [{name:'Dereverb BS-RoFormer', url:'https://huggingface.co/anvuew/dereverb_bs_roformer'}]
+    };
+    const mockFiles = {
+      rift: ['mock-rift-vocal.wav', 'mock-rift-manifest.json'],
+      background: ['mock-background-vocal.wav', 'mock-background-instrumental.wav'],
+      deharmony: ['mock-deharmony.wav'],
+      dereverb: ['mock-dereverb.wav']
+    };
     let token = '';
     const expanded = new Set();
     const kind = document.querySelector('#kind');
     const params = document.querySelector('#rift-params');
     kind.addEventListener('change', () => { params.hidden = kind.value !== 'rift'; });
     const headers = () => token ? {Authorization: `Bearer ${token}`} : {};
+    function appendMockFileLinks(job, target) {
+      for (const name of mockFiles[job.kind] || ['mock-output.wav']) {
+        const link = document.createElement('a'); link.className = 'mock-file'; link.textContent = `${name}（模拟）`;
+        link.href = `data:application/octet-stream;charset=utf-8,${encodeURIComponent(`RIFT Queue mock artifact\njob=${job.id}\nfile=${name}\n`)}`;
+        link.download = name; target.appendChild(link);
+      }
+    }
     async function request(path, options={}) {
       options.headers = {...(options.headers || {}), ...headers()};
       const response = await fetch(path, options);
@@ -155,10 +187,13 @@
         target = document.querySelector(`[data-files="${id}"]`);
       }
       target.innerHTML = '';
-      for (const file of job.files || []) {
-        const link = document.createElement('a'); link.textContent = file.name; link.href = '#';
-        link.href = file.url; link.download = file.name;
-        target.appendChild(link);
+      if (job.files && job.files.length) {
+        for (const file of job.files) {
+          const link = document.createElement('a'); link.textContent = file.name; link.href = file.url; link.download = file.name;
+          target.appendChild(link);
+        }
+      } else {
+        appendMockFileLinks(job, target);
       }
     }
     async function refresh() {
@@ -181,11 +216,28 @@
         }
         const details = document.createElement('div'); details.className = 'job-details';
         if (expanded.has(job.id)) {
-          const model = document.createElement('div'); model.className = 'params-view';
-          if (job.kind === 'rift' && job.params) model.textContent = Object.entries(job.params).map(([key, value]) => `${key} ${value}`).join(' · ');
-          const meta = document.createElement('div'); meta.className = 'muted'; meta.textContent = job.id.slice(0, 8);
+          const model = document.createElement('div'); model.className = 'detail-item';
+          const modelLabel = document.createElement('span'); modelLabel.className = 'detail-label'; modelLabel.textContent = '模型（示例）';
+          const modelLinks = document.createElement('span'); modelLinks.className = 'model-links detail-value';
+          for (const entry of modelCatalog[job.kind] || []) {
+            const link = document.createElement('a'); link.href = entry.url; link.target = '_blank'; link.rel = 'noreferrer'; link.textContent = entry.name;
+            modelLinks.appendChild(link);
+          }
+          model.append(modelLabel, modelLinks);
+          const parameterGrid = document.createElement('div'); parameterGrid.className = 'detail-grid';
+          if (job.kind === 'rift' && job.params) {
+            for (const [key, value] of Object.entries(job.params)) {
+              const item = document.createElement('div'); item.className = 'detail-item';
+              const label = document.createElement('span'); label.className = 'detail-label'; label.textContent = paramLabels[key] || key;
+              const displayValue = key === 'robust_f0' ? (f0Labels[value] || value) : value;
+              const content = document.createElement('span'); content.className = 'detail-value'; content.textContent = displayValue;
+              item.append(label, content); parameterGrid.appendChild(item);
+            }
+          }
+          const meta = document.createElement('div'); meta.className = 'detail-id'; meta.textContent = `任务编号：${job.id}`;
           const files = document.createElement('div'); files.className = 'files'; files.dataset.files = job.id;
-          details.append(model, meta, files);
+          details.append(model, parameterGrid, meta, files);
+          if (job.status !== 'succeeded') appendMockFileLinks(job, files);
         }
         node.append(main, details);
         root.appendChild(node);
