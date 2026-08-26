@@ -5,63 +5,100 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>RIFT Queue</title>
   <style>
-    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-    body { margin: 0 auto; max-width: 900px; padding: 32px 18px 80px; line-height: 1.5; }
-    h1 { font-size: 1.35rem; font-weight: 650; margin: 0; }
-    h2 { font-size: 1rem; margin: 30px 0 12px; }
-    form, .job { border: 1px solid color-mix(in srgb, currentColor 22%, transparent); border-radius: 8px; padding: 14px; }
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --bg: #101113;
+      --panel: #17191c;
+      --panel-soft: #141619;
+      --line: #2b2e34;
+      --line-strong: #3a3f48;
+      --text: #eef0f4;
+      --muted: #9298a3;
+      --accent: #8fb3ff;
+      --danger: #ef8f8f;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.45; }
+    main { width: min(1120px, calc(100% - 36px)); margin: 0 auto; padding: 34px 0 72px; }
+    h1 { margin: 0; font-size: 1.25rem; font-weight: 680; letter-spacing: -.02em; }
+    h2 { margin: 30px 0 10px; font-size: .95rem; font-weight: 650; }
     form { display: grid; gap: 12px; }
-    input, select, button { box-sizing: border-box; font: inherit; padding: 9px 10px; }
+    input, select, button { min-height: 42px; border: 1px solid var(--line-strong); border-radius: 7px; background: #1b1d21; color: var(--text); font: inherit; }
+    input, select { width: 100%; padding: 9px 11px; outline: none; }
+    input:focus, select:focus { border-color: #718fc7; box-shadow: 0 0 0 2px rgb(113 143 199 / 15%); }
+    button { padding: 8px 14px; cursor: pointer; font-weight: 600; }
+    button:hover { border-color: #5b6270; background: #22252a; }
+    input[type="file"] { padding: 5px; color: var(--muted); }
+    input[type="file"]::file-selector-button { height: 30px; margin-right: 9px; border: 0; border-radius: 5px; padding: 0 10px; background: #2a2d33; color: var(--text); cursor: pointer; }
     .select-wrap { position: relative; min-width: 0; }
-    .select-wrap::after { content: ''; position: absolute; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; right: 14px; top: 50%; transform: translateY(-65%) rotate(45deg); pointer-events: none; opacity: .7; }
-    .select-wrap select { appearance: none; width: 100%; padding-right: 38px; }
-    .select-wrap option { color: #f2f4f8; background: #292b2f; }
-    button { cursor: pointer; }
-    .row { display: grid; grid-template-columns: minmax(220px, 1.35fr) 150px minmax(220px, 1fr) 175px; gap: 10px; }
-    .jobs { display: grid; gap: 9px; }
-    .job { padding: 14px; }
-    .job-main { display: grid; grid-template-columns: 44px 150px minmax(0, 1fr) 100px 90px 60px; gap: 12px; align-items: center; }
-    .job-main > *, .queue-head > * { text-align: left; }
-    .muted { opacity: .62; font-size: .88rem; }
-    .mine { border-color: #4d8cff; }
-    .files a { display: block; margin-top: 7px; }
-    .params { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-    .params label { font-size: .88rem; }
-    .params .select-wrap { display: block; }
-    .params input, .params select { width: 100%; margin-top: 3px; }
-    #login { max-width: 420px; margin: 0 0 24px auto; }
-    #app[hidden], #login[hidden] { display: none; }
+    .select-wrap::after { content: ''; position: absolute; width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); right: 14px; top: 50%; transform: translateY(-65%) rotate(45deg); pointer-events: none; }
+    .select-wrap select { appearance: none; padding-right: 38px; }
+    .select-wrap option { color: var(--text); background: #292b2f; }
     [hidden] { display: none !important; }
-    #login { margin-bottom: 22px; }
-    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 24px; }
-    .account { display: flex; align-items: center; justify-content: flex-end; gap: 9px; min-width: 0; }
-    #logout { margin: 0; padding: 5px 9px; font-size: .85rem; }
-    .inline-login { display: flex; align-items: center; gap: 7px; margin: 0; border: 0; padding: 0; }
-    .inline-login input { width: 150px; }
+    .muted { color: var(--muted); font-size: .84rem; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
+    .account { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
+    .inline-login { display: flex; align-items: center; gap: 7px; margin: 0; }
+    .inline-login input { width: 150px; min-height: 36px; }
+    .inline-login button, #logout { min-height: 36px; padding: 6px 10px; background: transparent; }
+    #logout { border-color: transparent; color: var(--muted); }
+    #logout:hover { color: var(--text); background: #1c1e22; }
+    #submit-form { padding: 16px; border-radius: 10px; background: var(--panel); }
+    .row { display: grid; grid-template-columns: minmax(250px, 1.5fr) 145px minmax(240px, 1fr) 190px; gap: 10px; align-items: center; }
+    .params { display: grid; grid-template-columns: repeat(7, minmax(90px, 1fr)); gap: 10px; padding-top: 2px; }
+    .params label { color: var(--muted); font-size: .76rem; }
+    .params .select-wrap { display: block; }
+    .params input, .params select { min-height: 38px; margin-top: 5px; color: var(--text); }
+    .submit-footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+    #submit-form > .submit-footer button { min-width: 96px; border-color: #6687c3; background: #6485bf; color: #fff; }
+    #submit-form > .submit-footer button:hover { background: #6f91ce; }
+    .queue-head, .job-main { display: grid; grid-template-columns: 52px 160px minmax(180px, 1fr) 110px 110px 64px; gap: 12px; align-items: center; }
+    .queue-head { padding: 0 16px 7px; color: var(--muted); font-size: .76rem; }
+    .job-main > *, .queue-head > * { min-width: 0; text-align: left; }
+    .jobs { display: grid; gap: 7px; }
+    .job { padding: 14px 16px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-soft); }
+    .job:hover { border-color: var(--line-strong); }
+    .job.mine { border-color: #40577f; }
+    .job.mine:hover { border-color: #5874a7; }
+    .queue-number { color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 700; }
+    .owner { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cancel { min-height: 30px; border: 0; background: transparent; padding: 3px 0; color: var(--danger); font-size: .84rem; text-align: left; }
+    .cancel:hover { border: 0; background: transparent; color: #ffb0b0; }
+    .job-details { display: grid; gap: 16px; margin: 16px 0 2px 224px; }
+    .detail-section { display: grid; gap: 7px; }
+    .detail-heading { color: var(--muted); font-size: .72rem; font-weight: 650; letter-spacing: .04em; }
+    .detail-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px 22px; }
+    .detail-item { min-width: 0; }
+    .detail-label { display: block; color: var(--muted); font-size: .74rem; }
+    .detail-value { display: block; margin-top: 3px; overflow-wrap: anywhere; }
+    .model-links, .files { display: flex; flex-wrap: wrap; gap: 7px 16px; }
+    a { color: #9fbdff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .detail-id { color: #717783; font: .72rem ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+    .mock-file { color: #858b96; }
+    @media (max-width: 900px) {
+      .row { grid-template-columns: minmax(220px, 1fr) 150px; }
+      .params { grid-template-columns: repeat(4, minmax(90px, 1fr)); }
+      .queue-head, .job-main { grid-template-columns: 42px 130px minmax(140px, 1fr) 90px 95px 54px; gap: 9px; }
+      .job-details { margin-left: 181px; }
+    }
     @media (max-width: 650px) {
+      main { width: min(100% - 24px, 1120px); padding-top: 22px; }
       .topbar { align-items: flex-start; flex-wrap: wrap; }
       .account { width: 100%; justify-content: flex-start; }
       .inline-login { flex: 1; }
-      .row, .job-main { grid-template-columns: 1fr; }
-      .params { grid-template-columns: repeat(2, 1fr); }
+      .row { grid-template-columns: 1fr; }
+      .params { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .queue-head { display: none; }
+      .job-main { grid-template-columns: 34px minmax(0, 1fr) auto; gap: 6px 10px; }
+      .job-main > :nth-child(2) { grid-column: 2; }
+      .job-main > :nth-child(3) { grid-column: 2; }
+      .job-main > :nth-child(4), .job-main > :nth-child(5) { font-size: .82rem; }
+      .job-main > :nth-child(6) { grid-column: 3; grid-row: 1; }
+      .job-details { margin-left: 44px; }
       .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .job-main { gap: 3px; }
     }
-    .logout { margin-left: 8px; }
-    .job-details { display: grid; gap: 12px; margin-top: 12px; }
-    .detail-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 16px; }
-    .detail-item { min-width: 0; }
-    .detail-label { display: block; font-size: .75rem; opacity: .6; }
-    .detail-value { display: block; margin-top: 2px; overflow-wrap: anywhere; }
-    .detail-id { margin-top: 10px; font-size: .76rem; opacity: .62; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
-    .params-view { font-size: .84rem; }
-    .model-links { display: flex; flex-wrap: wrap; gap: 8px 14px; }
-    .mock-file { opacity: .72; }
-    .cancel { border: 0; background: transparent; padding: 4px 0; color: #d66; }
-    .owner { white-space: nowrap; }
-    .queue-number { font-variant-numeric: tabular-nums; font-weight: 700; color: #9ec1ff; }
-    .queue-head { display: grid; grid-template-columns: 44px 150px minmax(0, 1fr) 100px 90px 60px; gap: 12px; padding: 0 14px 6px; color: #888f9c; font-size: .78rem; }
-    .queue-head span:last-child { text-align: left; }
   </style>
 </head>
 <body>
@@ -103,8 +140,10 @@
         <label>F0 <span class="select-wrap"><select name="robust_f0"><option value="0" selected>关闭</option><option value="1">稳健</option><option value="2">强</option></select></span></label>
         <label>随机种子 <input name="seed" type="number" min="0" value="7"></label>
       </div>
-      <button>提交</button>
-      <div id="submit-status" class="muted"></div>
+      <div class="submit-footer">
+        <span id="submit-status" class="muted"></span>
+        <button>提交</button>
+      </div>
     </form>
     <h2>队列</h2>
     <div class="queue-head"><span>序号</span><span>提交人</span><span>标题</span><span>类型</span><span>状态</span><span>操作</span></div>
@@ -200,7 +239,7 @@
       const status = document.querySelector('#submit-status'); status.textContent = '上传中…';
       try {
         await request('/api/jobs', {method:'POST', body:new FormData(event.target)});
-        event.target.reset(); status.textContent = '已进入队列'; await refresh();
+        event.target.reset(); params.hidden = false; updateModels(); status.textContent = '已进入队列'; await refresh();
       } catch (error) { status.textContent = error.message; }
     });
     async function detail(id) {
@@ -241,9 +280,9 @@
         }
         const details = document.createElement('div'); details.className = 'job-details';
         if (expanded.has(job.id)) {
-          const model = document.createElement('div'); model.className = 'detail-item';
-          const modelLabel = document.createElement('span'); modelLabel.className = 'detail-label'; modelLabel.textContent = '模型（示例）';
-          const modelLinks = document.createElement('span'); modelLinks.className = 'model-links detail-value';
+          const modelSection = document.createElement('section'); modelSection.className = 'detail-section';
+          const modelHeading = document.createElement('div'); modelHeading.className = 'detail-heading'; modelHeading.textContent = '模型';
+          const modelLinks = document.createElement('div'); modelLinks.className = 'model-links';
           for (const entry of modelCatalog[job.kind] || []) {
             for (const source of entry.links || [entry]) {
               const link = document.createElement('a'); link.href = source.url; link.target = '_blank'; link.rel = 'noreferrer'; link.textContent = source.name;
@@ -251,7 +290,9 @@
               modelLinks.appendChild(link);
             }
           }
-          model.append(modelLabel, modelLinks);
+          modelSection.append(modelHeading, modelLinks);
+          const parameterSection = document.createElement('section'); parameterSection.className = 'detail-section';
+          const parameterHeading = document.createElement('div'); parameterHeading.className = 'detail-heading'; parameterHeading.textContent = '参数';
           const parameterGrid = document.createElement('div'); parameterGrid.className = 'detail-grid';
           if (job.kind === 'rift' && job.params) {
             for (const [key, value] of Object.entries(job.params)) {
@@ -262,15 +303,25 @@
               item.append(label, content); parameterGrid.appendChild(item);
             }
           }
+          parameterSection.append(parameterHeading, parameterGrid);
+          if (job.kind !== 'rift') parameterSection.hidden = true;
+          const fileSection = document.createElement('section'); fileSection.className = 'detail-section';
+          const fileHeading = document.createElement('div'); fileHeading.className = 'detail-heading'; fileHeading.textContent = '文件';
           const meta = document.createElement('div'); meta.className = 'detail-id'; meta.textContent = `任务编号：${job.id}`;
           const files = document.createElement('div'); files.className = 'files'; files.dataset.files = job.id;
-          details.append(model, parameterGrid, meta, files);
+          fileSection.append(fileHeading, files);
+          details.append(modelSection, parameterSection, fileSection, meta);
           if (job.status !== 'succeeded') appendMockFileLinks(job, files);
         }
         node.append(main, details);
+        details.onclick = event => event.stopPropagation();
         root.appendChild(node);
         if (job.owned) {
-          node.onclick = () => { if (job.status === 'succeeded') detail(job.id); else { expanded.has(job.id) ? expanded.delete(job.id) : expanded.add(job.id); refresh(); } };
+          node.onclick = () => {
+            if (expanded.has(job.id)) { expanded.delete(job.id); refresh(); }
+            else if (job.status === 'succeeded') detail(job.id);
+            else { expanded.add(job.id); refresh(); }
+          };
           if (expanded.has(job.id) && job.status === 'succeeded') detail(job.id).catch(() => {});
         }
       }
