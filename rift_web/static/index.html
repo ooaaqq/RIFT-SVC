@@ -57,11 +57,13 @@
     #submit-form { padding: 15px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-soft); }
     #submit-form input, #submit-form select { background: #181a1e; }
     .row { display: grid; grid-template-columns: minmax(250px, 1.5fr) 145px minmax(240px, 1fr) 200px; gap: 10px; align-items: center; }
-    .model-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px 22px; }
-    .model-note { display: grid; align-content: start; gap: 3px; min-width: 0; }
+    .model-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0; padding: 2px 0 4px; }
+    .model-note { display: grid; align-content: start; gap: 5px; min-width: 0; padding-right: 22px; }
+    .model-note + .model-note { border-left: 1px solid #292c31; padding-left: 22px; }
     .model-note-name { color: #d9dde4; font-size: .8rem; font-weight: 600; }
-    .model-note-description { color: var(--muted); font-size: .76rem; }
-    .model-info-links { display: flex; flex-wrap: wrap; gap: 7px 12px; font-size: .74rem; }
+    a.model-note-name:hover { color: #b8ccf2; }
+    .model-note-description { color: var(--muted); font-size: .76rem; line-height: 1.5; }
+    .model-info-links { display: flex; flex-wrap: wrap; gap: 5px 12px; margin-top: 1px; font-size: .74rem; }
     .params { display: grid; grid-template-columns: repeat(7, minmax(90px, 1fr)); gap: 10px; padding-top: 2px; }
     .params label { position: relative; color: var(--muted); font-size: .76rem; }
     .params label[data-tip] { cursor: help; text-decoration: underline dotted #59606c; text-underline-offset: 3px; }
@@ -112,6 +114,9 @@
     .mock-file { color: #858b96; }
     @media (max-width: 900px) {
       .row { grid-template-columns: minmax(220px, 1fr) 150px; }
+      .model-info { grid-template-columns: 1fr; }
+      .model-note { padding: 10px 0; }
+      .model-note + .model-note { border-top: 1px solid #292c31; border-left: 0; padding-left: 0; }
       .params { grid-template-columns: repeat(4, minmax(90px, 1fr)); }
       .queue-head, .job-main { grid-template-columns: 42px 130px minmax(140px, 1fr) 90px 95px 54px; gap: 9px; }
       .job-details { margin-left: 181px; }
@@ -206,6 +211,19 @@
     const model = document.querySelector('#model');
     const modelInfo = document.querySelector('#model-info');
     const params = document.querySelector('#rift-params');
+    const taskTitle = document.querySelector('input[name="title"]');
+    const upload = document.querySelector('input[name="upload"]');
+    let automaticTitle = '';
+    upload.addEventListener('change', () => {
+      const filename = upload.files[0]?.name || '';
+      const generated = filename.replace(/\.[^.]+$/, '') || filename;
+      if (generated && (!taskTitle.value.trim() || taskTitle.value === automaticTitle)) {
+        taskTitle.value = generated; automaticTitle = generated;
+      }
+    });
+    taskTitle.addEventListener('input', () => {
+      if (taskTitle.value !== automaticTitle) automaticTitle = '';
+    });
     function enhanceSelect(select) {
       const wrapper = select.closest('.select-wrap');
       if (!wrapper || wrapper.classList.contains('enhanced')) return;
@@ -243,14 +261,20 @@
       modelInfo.hidden = false;
       for (const entry of modelCatalog[kind.value] || []) {
         const note = document.createElement('div'); note.className = 'model-note';
-        const name = document.createElement('div'); name.className = 'model-note-name'; name.textContent = entry.label;
+        const singleSource = entry.sources?.length === 1 ? entry.sources[0] : null;
+        const name = document.createElement(singleSource ? 'a' : 'div'); name.className = 'model-note-name'; name.textContent = entry.label;
+        if (singleSource) { name.href = singleSource.url; name.target = '_blank'; name.rel = 'noreferrer'; }
         const description = document.createElement('div'); description.className = 'model-note-description'; description.textContent = entry.description;
-        const links = document.createElement('div'); links.className = 'model-info-links'; links.append('开源地址：');
-        for (const source of entry.sources || []) {
-          const link = document.createElement('a'); link.href = source.url; link.target = '_blank'; link.rel = 'noreferrer'; link.textContent = source.label;
-          links.appendChild(link);
+        note.append(name, description);
+        if ((entry.sources?.length || 0) > 1) {
+          const links = document.createElement('div'); links.className = 'model-info-links'; links.append('开源地址：');
+          for (const source of entry.sources) {
+            const link = document.createElement('a'); link.href = source.url; link.target = '_blank'; link.rel = 'noreferrer'; link.textContent = source.label;
+            links.appendChild(link);
+          }
+          note.appendChild(links);
         }
-        note.append(name, description, links); modelInfo.appendChild(note);
+        modelInfo.appendChild(note);
       }
     }
     function updateModels() {
@@ -315,7 +339,7 @@
       const status = document.querySelector('#submit-status'); status.textContent = '上传中…';
       try {
         await request('/api/jobs', {method:'POST', body:new FormData(event.target)});
-        event.target.reset(); params.hidden = false; updateModels();
+        event.target.reset(); automaticTitle = ''; params.hidden = false; updateModels();
         document.querySelectorAll('.select-wrap select').forEach(select => select._refreshCustom?.());
         status.textContent = '已进入队列'; await refresh();
       } catch (error) { status.textContent = error.message; }
