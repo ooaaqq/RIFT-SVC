@@ -13,6 +13,7 @@ from pathlib import Path
 
 from scripts.kaggle_common import (
     AUDIO_EXTENSIONS,
+    current_dataset_version,
     current_datasets,
     exclusive_kaggle_channel,
     frame_delta,
@@ -52,6 +53,13 @@ def build_run_name(args: argparse.Namespace) -> str:
         f"-ds{name_value(args.ds)}-spk{name_value(args.spk)}"
         f"-cfg{name_value(args.cfg_rescale)}-rf{args.robust_f0}-seed{args.seed}"
     )
+
+
+def kernel_title(kernel_slug: str) -> str:
+    """Keep custom kernel slugs consistent with Kaggle's title validation."""
+    if kernel_slug == DEFAULT_KERNEL_SLUG:
+        return "RIFT SVC CLI Inference"
+    return kernel_slug.rsplit("/", 1)[-1].replace("-", " ").title()
 
 
 def render_kernel() -> str:
@@ -271,13 +279,14 @@ def run_job(args: argparse.Namespace) -> None:
             run(["kaggle", "datasets", "create", "-p", str(dataset_dir)])
         expected_files = {"job.json"} | {item["input_name"] for item in job["items"]}
         wait_for_dataset(dataset_ref, expected_files, min(args.timeout, 30 * 60))
+        dataset_source = f"{dataset_ref}/{current_dataset_version(dataset_ref)}"
 
         (kernel_dir / "kernel.py").write_text(render_kernel(), encoding="utf-8")
         (kernel_dir / "kernel-metadata.json").write_text(
             json.dumps(
                 {
                     "id": kernel_ref,
-                    "title": "RIFT SVC CLI Inference",
+                    "title": kernel_title(args.kernel_slug),
                     "code_file": "kernel.py",
                     "language": "python",
                     "kernel_type": "script",
@@ -286,7 +295,7 @@ def run_job(args: argparse.Namespace) -> None:
                     "enable_tpu": "false",
                     "machine_shape": DEFAULT_ACCELERATOR,
                     "enable_internet": "true",
-                    "dataset_sources": [dataset_ref],
+                    "dataset_sources": [dataset_source],
                     "competition_sources": [],
                     "kernel_sources": [],
                     "model_sources": [],

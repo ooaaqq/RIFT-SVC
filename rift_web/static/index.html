@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RIFT Queue</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0 auto; max-width: 900px; padding: 32px 18px 80px; line-height: 1.5; }
+    h1 { font-size: 1.35rem; font-weight: 650; margin: 0 0 24px; }
+    h2 { font-size: 1rem; margin: 30px 0 12px; }
+    form, .job { border: 1px solid color-mix(in srgb, currentColor 22%, transparent); border-radius: 8px; padding: 14px; }
+    form { display: grid; gap: 12px; }
+    input, select, button { box-sizing: border-box; font: inherit; padding: 9px 10px; }
+    button { cursor: pointer; }
+    .row { display: grid; grid-template-columns: 1fr 180px auto; gap: 10px; }
+    .jobs { display: grid; gap: 9px; }
+    .job { display: grid; grid-template-columns: 70px 1fr 100px 100px; gap: 8px; align-items: center; }
+    .muted { opacity: .62; font-size: .88rem; }
+    .mine { border-color: #4d8cff; }
+    .files a { display: block; margin-top: 7px; }
+    #login { max-width: 420px; margin-top: 18vh; }
+    #app[hidden], #login[hidden] { display: none; }
+    @media (max-width: 650px) {
+      .row, .job { grid-template-columns: 1fr; }
+      .job { gap: 3px; }
+    }
+  </style>
+</head>
+<body>
+  <section id="login">
+    <h1>RIFT Queue</h1>
+    <form id="login-form">
+      <label>匿名口令 <input id="token" type="password" required autocomplete="current-password"></label>
+      <button>进入</button>
+      <div id="login-error" class="muted"></div>
+    </form>
+  </section>
+
+  <main id="app" hidden>
+    <h1>RIFT Queue <span id="identity" class="muted"></span></h1>
+    <form id="submit-form">
+      <div class="row">
+        <input name="title" maxlength="100" placeholder="任务名 / 歌曲名" required>
+        <select name="kind" required>
+          <option value="background">去背景</option>
+          <option value="deharmony">去和声</option>
+          <option value="dereverb">去混响</option>
+          <option value="rift">RIFT</option>
+        </select>
+        <input name="upload" type="file" accept="audio/*,.wav,.flac,.m4a,.mp3,.ogg,.opus" required>
+      </div>
+      <button>提交一个单步任务</button>
+      <div id="submit-status" class="muted"></div>
+    </form>
+    <h2>共享任务队列</h2>
+    <div id="jobs" class="jobs"></div>
+  </main>
+
+  <script>
+    const labels = {queued:'○ 等待',running:'● 处理中',succeeded:'✓ 完成',failed:'× 失败',cancelled:'— 已取消'};
+    let token = '';
+    const headers = () => token ? {Authorization: `Bearer ${token}`} : {};
+    async function request(path, options={}) {
+      options.headers = {...(options.headers || {}), ...headers()};
+      const response = await fetch(path, options);
+      if (!response.ok) {
+        let detail = `${response.status}`;
+        try { detail = (await response.json()).detail || detail; } catch (_) {}
+        throw new Error(detail);
+      }
+      return response.json();
+    }
+    async function enter() {
+      const me = await request('/api/me');
+      document.querySelector('#identity').textContent = `— ${me.username}`;
+      document.querySelector('#login').hidden = true;
+      document.querySelector('#app').hidden = false;
+      await refresh();
+    }
+    document.querySelector('#login-form').addEventListener('submit', async event => {
+      event.preventDefault(); token = document.querySelector('#token').value;
+      try {
+        await request('/api/session', {method:'POST'}); token = ''; document.querySelector('#token').value = ''; await enter();
+      } catch (error) { document.querySelector('#login-error').textContent = error.message; }
+    });
+    document.querySelector('#submit-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const status = document.querySelector('#submit-status'); status.textContent = '上传中…';
+      try {
+        await request('/api/jobs', {method:'POST', body:new FormData(event.target)});
+        event.target.reset(); status.textContent = '已进入队列'; await refresh();
+      } catch (error) { status.textContent = error.message; }
+    });
+    async function detail(id) {
+      const job = await request(`/api/jobs/${id}`);
+      const target = document.querySelector(`[data-files="${id}"]`);
+      target.innerHTML = '';
+      for (const file of job.files || []) {
+        const link = document.createElement('a'); link.textContent = file.name; link.href = '#';
+        link.href = file.url; link.download = file.name;
+        target.appendChild(link);
+      }
+    }
+    async function refresh() {
+      const jobs = await request('/api/jobs'); const root = document.querySelector('#jobs'); root.innerHTML = '';
+      for (const job of jobs) {
+        const node = document.createElement('div'); node.className = `job ${job.owned ? 'mine' : ''}`;
+        const owner = document.createElement('strong'); owner.textContent = job.username;
+        const summary = document.createElement('div');
+        const title = document.createElement('div'); title.textContent = job.title;
+        const meta = document.createElement('div'); meta.className = 'muted';
+        meta.textContent = `${job.id.slice(0,8)}${job.queue_position ? ` · 队列第 ${job.queue_position}` : ''}`;
+        const files = document.createElement('div'); files.className = 'files'; files.dataset.files = job.id;
+        summary.append(title, meta, files);
+        const kind = document.createElement('span'); kind.textContent = job.kind_label;
+        const state = document.createElement('span'); state.textContent = labels[job.status];
+        node.append(owner, summary, kind, state);
+        if (job.owned && job.status === 'queued') {
+          const cancel = document.createElement('button'); cancel.textContent = '取消';
+          cancel.onclick = async event => { event.stopPropagation(); await request(`/api/jobs/${job.id}/cancel`, {method:'POST'}); await refresh(); };
+          summary.appendChild(cancel);
+        }
+        if (job.owned && job.status === 'succeeded') node.onclick = () => detail(job.id);
+        root.appendChild(node);
+      }
+    }
+    enter().catch(() => {});
+    setInterval(() => document.querySelector('#app').hidden || refresh().catch(()=>{}), 5000);
+  </script>
+</body>
+</html>

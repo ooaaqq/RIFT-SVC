@@ -15,6 +15,7 @@ from scripts.kaggle_rift import (
     DEFAULT_REPO_REF,
     build_job,
     build_run_name,
+    kernel_title,
     name_value,
     render_kernel,
 )
@@ -61,6 +62,11 @@ def test_run_name_contains_shared_batch_parameters() -> None:
     )
 
 
+def test_custom_kernel_title_matches_slug() -> None:
+    assert kernel_title("rift-svc-cli-inference-v2") == "Rift Svc Cli Inference V2"
+    assert kernel_title("rift-svc-cli-inference") == "RIFT SVC CLI Inference"
+
+
 @patch(
     "scripts.kaggle_rift.probe_audio",
     return_value={"sample_rate": "44100", "channels": 1, "duration": "1.0"},
@@ -86,9 +92,7 @@ def test_build_job_records_multiple_inputs_and_human_output_names(
         "output-0002.wav",
     ]
     assert job["items"][0]["input_sha256"] == hashlib.sha256(b"first").hexdigest()
-    assert job["items"][0]["output_name"] == (
-        "歌名-歌手-bs124-vocal-l1-rift25k.wav"
-    )
+    assert job["items"][0]["output_name"] == ("歌名-歌手-bs124-vocal-l1-rift25k.wav")
     assert job["items"][1]["output_name"] == (
         "歌名-歌手-bs124-vocal-l1-anvuew-karaoke-lead-rift25k.wav"
     )

@@ -63,6 +63,8 @@ uv run python scripts/kaggle_separate.py input.wav \
 
 当前 profiles：
 
+- `big-beta7-bs-roformer-mag-max-spec`（Big Beta 7 与 BS_RoFormer_mag Vocal
+  输出使用 Max FFT/Spec 合成，伴奏为原混音减合成人声的残余）
 - `anvuew-dereverb-22.5050`
 - `anvuew-karaoke`
 - `becruily-frazer-karaoke`

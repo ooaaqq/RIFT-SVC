@@ -12,6 +12,7 @@ from pathlib import Path
 
 from scripts.kaggle_common import (
     AUDIO_EXTENSIONS,
+    current_dataset_version,
     current_datasets,
     exclusive_kaggle_channel,
     frame_delta,
@@ -189,6 +190,7 @@ def run_job(args: argparse.Namespace) -> None:
             {job["input_name"], "job.json"},
             min(args.timeout, 30 * 60),
         )
+        dataset_source = f"{dataset_ref}/{current_dataset_version(dataset_ref)}"
 
         (kernel_dir / "kernel.py").write_text(render_kernel(), encoding="utf-8")
         (kernel_dir / "kernel-metadata.json").write_text(
@@ -204,7 +206,7 @@ def run_job(args: argparse.Namespace) -> None:
                     "enable_tpu": "false",
                     "machine_shape": DEFAULT_ACCELERATOR,
                     "enable_internet": "true",
-                    "dataset_sources": [dataset_ref],
+                    "dataset_sources": [dataset_source],
                     "competition_sources": [],
                     "kernel_sources": [],
                     "model_sources": [],

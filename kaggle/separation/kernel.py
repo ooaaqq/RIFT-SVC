@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
+import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -46,6 +47,69 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def max_fft_ensemble(paths: list[Path], output: Path) -> tuple[int, int, int]:
+    """Select the loudest complex STFT bin, equivalent to Max Spec/Max FFT."""
+    import librosa
+    import numpy as np
+    import soundfile as sf
+
+    arrays = []
+    sample_rate = None
+    for path in paths:
+        audio, rate = sf.read(path, dtype="float32", always_2d=True)
+        audio = audio.T
+        if sample_rate is None:
+            sample_rate = rate
+        if rate != sample_rate or (arrays and audio.shape != arrays[0].shape):
+            raise RuntimeError("ensemble inputs must have identical rate and shape")
+        arrays.append(audio)
+    assert sample_rate is not None
+    channels, frames = arrays[0].shape
+    rendered = np.empty((channels, frames), dtype=np.float32)
+    for channel in range(channels):
+        spectra = np.stack(
+            [
+                librosa.stft(
+                    audio[channel], n_fft=2048, hop_length=512, win_length=2048
+                )
+                for audio in arrays
+            ]
+        )
+        choices = np.abs(spectra).argmax(axis=0, keepdims=True)
+        selected = np.take_along_axis(spectra, choices, axis=0)[0]
+        rendered[channel] = librosa.istft(
+            selected, hop_length=512, win_length=2048, length=frames
+        )
+    sf.write(output, rendered.T, sample_rate, subtype="FLOAT")
+    return sample_rate, channels, frames
+
+
+def mixture_residual(
+    mixture_path: Path, vocal_path: Path, output: Path
+) -> tuple[int, int, int]:
+    """Create an additive accompaniment residual from the ensembled vocal."""
+    import librosa
+    import numpy as np
+    import soundfile as sf
+
+    vocal, sample_rate = sf.read(vocal_path, dtype="float32", always_2d=True)
+    mixture, _ = librosa.load(
+        mixture_path, sr=sample_rate, mono=False, dtype=np.float32
+    )
+    if mixture.ndim == 1:
+        mixture = mixture[None, :]
+    mixture = mixture.T
+    if mixture.shape[1] == 1 and vocal.shape[1] == 2:
+        mixture = np.repeat(mixture, 2, axis=1)
+    if mixture.shape[1] != vocal.shape[1]:
+        raise RuntimeError("mixture and vocal channel counts do not match")
+    if len(mixture) < len(vocal):
+        mixture = np.pad(mixture, ((0, len(vocal) - len(mixture)), (0, 0)))
+    mixture = mixture[: len(vocal)]
+    sf.write(output, mixture - vocal, sample_rate, subtype="FLOAT")
+    return sample_rate, vocal.shape[1], len(vocal)
+
+
 def find_job() -> tuple[Path, dict]:
     jobs = sorted(INPUT_ROOT.rglob("job.json"))
     if len(jobs) != 1:
@@ -68,7 +132,8 @@ def main() -> None:
         raise RuntimeError("input audio is missing or its SHA-256 does not match")
 
     msst_dir = RUNTIME_ROOT / "msst"
-    model_dir = RUNTIME_ROOT / "model"
+    model_dir = RUNTIME_ROOT / "models"
+    model_output_root = RUNTIME_ROOT / "model-outputs"
     input_dir = RUNTIME_ROOT / "input"
     run(["git", "clone", MSST_REPO, str(msst_dir)])
     run(["git", "checkout", MSST_COMMIT], cwd=msst_dir)
@@ -86,73 +151,113 @@ def main() -> None:
         raise RuntimeError("Kaggle GPU is unavailable; enable a GPU accelerator")
 
     model_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint_path = Path(
-        hf_hub_download(
-            repo_id=profile["model_repo"],
-            filename=profile["checkpoint"],
-            revision=profile["model_revision"],
-            local_dir=str(model_dir),
-        )
-    )
-    config_path = Path(
-        hf_hub_download(
-            repo_id=profile["model_repo"],
-            filename=profile["config"],
-            revision=profile["model_revision"],
-            local_dir=str(model_dir),
-        )
-    )
-    if checkpoint_path.stat().st_size < 100 * 1024 * 1024:
-        raise RuntimeError(f"checkpoint looks incomplete: {checkpoint_path}")
-
     input_dir.mkdir(parents=True, exist_ok=True)
     (input_dir / input_audio.name).symlink_to(input_audio)
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+    model_output_root.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda")
-    model, config = get_model_from_config(profile["architecture"], str(config_path))
-    if profile.get("normalize_small_config"):
-        if "inference" not in config:
-            config.inference = {}
-        config.inference.dim_t = int(config.audio.dim_t)
-        config.inference.num_overlap = 1
-    config.inference.batch_size = 1
-
-    try:
-        checkpoint = torch.load(
-            str(checkpoint_path), map_location="cpu", weights_only=False
-        )
-    except TypeError:
-        checkpoint = torch.load(str(checkpoint_path), map_location="cpu")
-
-    args = SimpleNamespace(
-        start_check_point=str(checkpoint_path),
-        model_type="bs_roformer",
-        load_only_compatible_weights=False,
-        lora_checkpoint_loralib="",
-        input_folder=str(input_dir),
-        store_dir=str(OUTPUT_ROOT),
-        extract_instrumental=True,
-        disable_detailed_pbar=False,
-        force_cpu=False,
-        pcm_type="FLOAT",
-        flac_file=False,
-        use_tta=False,
-        bigshifts=1,
-        filename_template=f"{{file_name}}__{profile['label']}_{{instr}}",
-        draw_spectro=0,
-    )
-    load_start_checkpoint(args, model, checkpoint, type_="inference")
-    model = model.to(device).eval()
-    run_folder(model, args, config, device, verbose=True)
-
-    rename_to = profile.get("rename_instrumental")
-    if rename_to:
-        for path in sorted(OUTPUT_ROOT.rglob("*_instrumental.wav")):
-            path.rename(
-                path.with_name(
-                    path.name.replace("_instrumental.wav", f"_{rename_to}.wav")
-                )
+    model_profiles = profile.get("models", [profile])
+    model_records = []
+    vocal_outputs = []
+    for index, model_profile in enumerate(model_profiles, start=1):
+        current_model_dir = model_dir / f"model-{index}"
+        current_output_dir = model_output_root / f"model-{index}"
+        current_output_dir.mkdir(parents=True)
+        checkpoint_path = Path(
+            hf_hub_download(
+                repo_id=model_profile["model_repo"],
+                filename=model_profile["checkpoint"],
+                revision=model_profile["model_revision"],
+                local_dir=str(current_model_dir),
             )
+        )
+        config_path = Path(
+            hf_hub_download(
+                repo_id=model_profile["model_repo"],
+                filename=model_profile["config"],
+                revision=model_profile["model_revision"],
+                local_dir=str(current_model_dir),
+            )
+        )
+        if checkpoint_path.stat().st_size < 100 * 1024 * 1024:
+            raise RuntimeError(f"checkpoint looks incomplete: {checkpoint_path}")
+
+        model, config = get_model_from_config(
+            model_profile["architecture"], str(config_path)
+        )
+        if model_profile.get("normalize_small_config"):
+            if "inference" not in config:
+                config.inference = {}
+            config.inference.dim_t = int(config.audio.dim_t)
+            config.inference.num_overlap = 1
+        config.inference.batch_size = 1
+        try:
+            checkpoint = torch.load(
+                str(checkpoint_path), map_location="cpu", weights_only=False
+            )
+        except TypeError:
+            checkpoint = torch.load(str(checkpoint_path), map_location="cpu")
+        args = SimpleNamespace(
+            start_check_point=str(checkpoint_path),
+            model_type=model_profile["architecture"],
+            load_only_compatible_weights=False,
+            lora_checkpoint_loralib="",
+            input_folder=str(input_dir),
+            store_dir=str(current_output_dir),
+            extract_instrumental=True,
+            disable_detailed_pbar=False,
+            force_cpu=False,
+            pcm_type="FLOAT",
+            flac_file=False,
+            use_tta=False,
+            bigshifts=1,
+            filename_template=f"{{file_name}}__{model_profile['label']}_{{instr}}",
+            draw_spectro=0,
+        )
+        load_start_checkpoint(args, model, checkpoint, type_="inference")
+        model = model.to(device).eval()
+        run_folder(model, args, config, device, verbose=True)
+        candidates = sorted(current_output_dir.rglob("*.wav"))
+        vocals = [path for path in candidates if "vocals" in path.stem.lower()]
+        if len(candidates) != 2 or len(vocals) != 1:
+            raise RuntimeError(
+                f"expected one vocal and one residual for {model_profile['label']}: "
+                f"{candidates}"
+            )
+        vocal_outputs.append(vocals[0])
+        model_records.append(
+            {
+                "label": model_profile["label"],
+                "repo": model_profile["model_repo"],
+                "revision": model_profile["model_revision"],
+                "checkpoint": model_profile["checkpoint"],
+                "checkpoint_sha256": sha256(checkpoint_path),
+            }
+        )
+        del checkpoint, model
+        torch.cuda.empty_cache()
+
+    if profile.get("ensemble_algorithm"):
+        if profile["ensemble_algorithm"] != "max_fft" or len(vocal_outputs) < 2:
+            raise RuntimeError("unsupported ensemble configuration")
+        vocal_path = OUTPUT_ROOT / f"{input_audio.stem}__{profile['label']}_Vocals.wav"
+        residual_path = (
+            OUTPUT_ROOT / f"{input_audio.stem}__{profile['label']}_instrumental.wav"
+        )
+        max_fft_ensemble(vocal_outputs, vocal_path)
+        mixture_residual(input_audio, vocal_path, residual_path)
+    else:
+        source_outputs = sorted(model_output_root.rglob("*.wav"))
+        for path in source_outputs:
+            shutil.copy2(path, OUTPUT_ROOT / path.name)
+        rename_to = profile.get("rename_instrumental")
+        if rename_to:
+            for path in sorted(OUTPUT_ROOT.rglob("*_instrumental.wav")):
+                path.rename(
+                    path.with_name(
+                        path.name.replace("_instrumental.wav", f"_{rename_to}.wav")
+                    )
+                )
 
     output_files = sorted(OUTPUT_ROOT.rglob("*.wav"))
     if len(output_files) != 2:
@@ -178,7 +283,8 @@ def main() -> None:
         **job,
         "completed_at": datetime.now(UTC).isoformat(),
         "msst_commit": MSST_COMMIT,
-        "checkpoint_sha256": sha256(checkpoint_path),
+        "models": model_records,
+        "ensemble_algorithm": profile.get("ensemble_algorithm"),
         "outputs": outputs,
         "runtime": {
             "python": platform.python_version(),

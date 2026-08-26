@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from scripts.kaggle_common import (
+    current_dataset_version,
     exclusive_kaggle_channel,
     frame_count_at_rate,
     frame_delta,
@@ -102,6 +103,30 @@ def test_wait_for_dataset_checks_current_files() -> None:
         ],
         capture=True,
         check=False,
+    )
+
+
+def test_current_dataset_version_reads_kaggle_status() -> None:
+    response = subprocess.CompletedProcess(
+        args=[],
+        returncode=0,
+        stdout=json.dumps({"current_version_number": 42}),
+        stderr="",
+    )
+
+    with patch("scripts.kaggle_common.run", return_value=response) as run:
+        assert current_dataset_version("owner/dataset") == 42
+
+    run.assert_called_once_with(
+        [
+            "kaggle",
+            "datasets",
+            "status",
+            "owner/dataset",
+            "--format",
+            "json(current_version_number)",
+        ],
+        capture=True,
     )
 
 

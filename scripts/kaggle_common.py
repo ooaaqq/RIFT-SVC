@@ -152,6 +152,28 @@ def wait_for_dataset(
     raise TimeoutError(f"dataset did not become ready within {timeout} seconds")
 
 
+def current_dataset_version(dataset_ref: str) -> int:
+    """Return the current version so a kernel mounts the just-published data."""
+    result = run(
+        [
+            "kaggle",
+            "datasets",
+            "status",
+            dataset_ref,
+            "--format",
+            "json(current_version_number)",
+        ],
+        capture=True,
+    )
+    payload = json.loads(result.stdout)
+    version = int(payload["current_version_number"])
+    if version < 1:
+        raise RuntimeError(
+            f"invalid current dataset version for {dataset_ref}: {version}"
+        )
+    return version
+
+
 def kernel_status(kernel_ref: str) -> str:
     result = run(["kaggle", "kernels", "status", kernel_ref], capture=True)
     text = result.stdout + result.stderr

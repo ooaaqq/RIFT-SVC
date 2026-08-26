@@ -4,9 +4,10 @@
 
 - RIFT-SVC 本地推理核心；
 - Kaggle T4 自动推理与分离；
+- 好友内部使用的极简 Web 单步任务队列；
 - 从音源、局部修复、混音到视频封装的制作工作流。
 
-不维护训练、数据预处理、GUI 或通用多模型兼容层。模型公式、RMVPE、Mel/STFT
+不维护训练、数据预处理或通用多模型兼容层。模型公式、RMVPE、Mel/STFT
 和 HiFi-GAN 结构保持与现有权重一致。
 
 ## 仓库结构
@@ -17,6 +18,7 @@ rift_svc/                   RIFT、RMVPE、HiFi-GAN 与推理运行时
 rift_svc/audio_tools.py     制作脚本共享的音频 I/O、时间与原子写入
 rift_svc/alignment.py       对齐检测、稳健拟合与保音高渲染核心
 rift_svc/mixctl.py          歌曲书架、原子版本与交付检查工具
+rift_web/                   匿名口令、共享队列、上传下载与串行 dispatcher
 scripts/kaggle_rift.py      本地提交 RIFT 云端任务
 scripts/kaggle_separate.py  本地提交 BS/MelBand-RoFormer 任务
 kaggle/rift/kernel.py       Kaggle RIFT Script Kernel
@@ -39,14 +41,14 @@ tests/                      推理行为和云端提交器的轻量测试
 
 ```bash
 direnv allow
-uv sync --extra dev
+uv sync --extra dev --extra web
 ```
 
 之后进入目录时，direnv 会自动加载 Nix Flake，并激活已有的 `.venv`。也可以手动：
 
 ```bash
 nix develop
-uv sync --extra dev
+uv sync --extra dev --extra web
 ```
 
 Flake 提供 Python 3.11、FFmpeg、Kaggle CLI、uv、Ruff 和编译依赖；uv 只管理
@@ -75,6 +77,23 @@ uv run python scripts/kaggle_separate.py vocals.wav \
 RIFT 批次会让双 T4 各加载一套常驻推理运行时并动态领取输入；辅助分离仍按所选公开
 模型提交。两者都会校验任务 ID、文件哈希、音频格式和时长。完整参数和故障恢复见
 [`kaggle/README.md`](kaggle/README.md)。
+
+## 好友任务队列
+
+Web 队列一次只接受一个操作：去背景、去和声、去混响或 RIFT。任务名、用户名、
+类型和状态对所有持有口令的成员可见；输入、输出和 manifest 只有提交者与管理员可
+访问。后续处理必须人工下载、试听、归档并重新上传，不自动串联步骤。
+
+Nix package 提供三个入口：
+
+```text
+rift-web          FastAPI 与极简前端
+rift-dispatcher   SQLite FIFO 到 Kaggle 的单通道执行器
+rift-cleanup      删除到期音频但保留任务记录和 manifest
+```
+
+生产环境由 NixOS fleet 提供 `RIFT_WEB_USERS_FILE`、状态目录和 Kaggle credential；
+凭据、任务输入和输出不进入 Git 或 Nix store。
 
 ## 本地推理
 
